@@ -1,6 +1,7 @@
 package com.island.module.video.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.island.common.BusinessException;
 import com.island.common.PageResult;
@@ -10,6 +11,7 @@ import com.island.module.file.dto.FileDto;
 import com.island.module.post.FileAsset;
 import com.island.module.post.mapper.FileAssetMapper;
 import com.island.module.video.Video;
+import com.island.module.video.VocabCounter;
 import com.island.module.video.VideoSentence;
 import com.island.module.video.VideoSeries;
 import com.island.module.video.admin.dto.*;
@@ -265,6 +267,14 @@ public class AdminVideoService {
 			sentenceMapper.insert(s);
 			seq++;
 		}
+		refreshVocabCount(videoId, drafts.stream().map(PublishVideoRequest.SentenceDraft::getTextEn).toList());
+	}
+
+	private void refreshVocabCount(Long videoId, List<String> englishTexts) {
+		int count = VocabCounter.countUniqueWords(englishTexts);
+		videoMapper.update(null, new LambdaUpdateWrapper<Video>()
+				.eq(Video::getId, videoId)
+				.set(Video::getVocabCount, count));
 	}
 
 	private FileAsset requireVideoAsset(String objectKey) {

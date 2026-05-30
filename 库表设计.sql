@@ -333,6 +333,7 @@ CREATE TABLE `video` (
   `embed_cid`     BIGINT          NULL COMMENT 'B 站分 P cid（可选）',
   `play_url`      VARCHAR(512)    NULL COMMENT '自托管播放地址（OSS/CDN 或 /uploads/）',
   `duration_sec`  INT UNSIGNED    NULL COMMENT '时长（秒）',
+  `vocab_count`   INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '去重英文词汇数',
   `difficulty`    ENUM('easy','medium','hard') NOT NULL DEFAULT 'medium',
   `is_vip`        TINYINT         NOT NULL DEFAULT 0 COMMENT '1=专属视频',
   `view_count`    INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '站内播放计数',

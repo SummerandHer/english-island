@@ -1,12 +1,12 @@
 package com.island.module.video;
 
 import com.island.common.ApiResponse;
+import com.island.common.PageResult;
 import com.island.security.IslandUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -17,10 +17,12 @@ public class VideoController {
 	private final VideoService videoService;
 
 	@GetMapping
-	public ApiResponse<List<VideoService.VideoSummary>> list(
+	public ApiResponse<PageResult<VideoService.VideoSummary>> list(
+			@RequestParam(defaultValue = "1") int page,
+			@RequestParam(defaultValue = "7") int size,
 			@AuthenticationPrincipal IslandUserDetails userDetails) {
 		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
-		return ApiResponse.ok(videoService.listVideos(userId));
+		return ApiResponse.ok(videoService.listVideos(page, size, userId));
 	}
 
 	@GetMapping("/{id}")

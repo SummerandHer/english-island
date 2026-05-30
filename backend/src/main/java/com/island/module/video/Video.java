@@ -51,6 +51,9 @@ public class Video {
 	@TableField("duration_sec")
 	private Integer durationSec;
 
+	@TableField("vocab_count")
+	private Integer vocabCount = 0;
+
 	private String difficulty = "medium";
 
 	@TableField("is_vip")
