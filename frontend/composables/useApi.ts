@@ -1,4 +1,14 @@
 import type { ApiResponse } from '~/types/api'
+import type { FetchError } from 'ofetch'
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const fetchError = error as FetchError<ApiResponse<unknown>>
+    if (fetchError.data?.message) return fetchError.data.message
+    return error.message
+  }
+  return '请求失败'
+}
 
 export function useApi() {
   const config = useRuntimeConfig()
@@ -11,14 +21,18 @@ export function useApi() {
     if (auth.token) {
       headers.Authorization = `Bearer ${auth.token}`
     }
-    const res = await $fetch<ApiResponse<T>>(`${config.public.apiBase}${path}`, {
-      ...options,
-      headers
-    })
-    if (res.code !== 0) {
-      throw new Error(res.message || '请求失败')
+    try {
+      const res = await $fetch<ApiResponse<T>>(`${config.public.apiBase}${path}`, {
+        ...options,
+        headers
+      })
+      if (res.code !== 0) {
+        throw new Error(res.message || '请求失败')
+      }
+      return res.data as T
+    } catch (error: unknown) {
+      throw new Error(extractErrorMessage(error))
     }
-    return res.data as T
   }
 
   return { request, apiBase: config.public.apiBase }

@@ -13,8 +13,16 @@ public class IslandProperties {
 
 	private Jwt jwt = new Jwt();
 	private Upload upload = new Upload();
+	private Oss oss = new Oss();
 	private Cors cors = new Cors();
 	private Ai ai = new Ai();
+	private Verification verification = new Verification();
+
+	@Data
+	public static class Verification {
+		/** redis | memory（本地无 Redis 时用 memory） */
+		private String store = "redis";
+	}
 
 	@Data
 	public static class Jwt {
@@ -25,6 +33,20 @@ public class IslandProperties {
 	@Data
 	public static class Upload {
 		private String dir = "../uploads";
+		/** local | oss */
+		private String storageType = "oss";
+		private long maxSizeMb = 200;
+	}
+
+	@Data
+	public static class Oss {
+		private String endpoint = "https://oss-cn-guangzhou.aliyuncs.com";
+		private String region = "cn-guangzhou";
+		private String bucket = "english-island";
+		private String accessKeyId;
+		private String accessKeySecret;
+		/** 可选：自定义 CDN/域名，不填则按 bucket + endpoint 拼接公网 URL */
+		private String publicBaseUrl;
 	}
 
 	@Data

@@ -20,6 +20,9 @@ public class User {
 
 	private String email;
 
+	@TableField("email_verified")
+	private Boolean emailVerified = false;
+
 	private String phone;
 
 	@TableField("password_hash")
