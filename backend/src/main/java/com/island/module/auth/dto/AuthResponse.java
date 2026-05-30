@@ -24,5 +24,7 @@ public class AuthResponse {
 		private String avatarUrl;
 		private boolean vip;
 		private LocalDateTime vipExpireAt;
+		private String role;
+		private boolean admin;
 	}
 }

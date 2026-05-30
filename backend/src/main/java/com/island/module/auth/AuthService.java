@@ -115,6 +115,8 @@ public class AuthService {
 				.avatarUrl(user.getAvatarUrl())
 				.vip(user.isVipActive())
 				.vipExpireAt(user.getVipExpireAt())
+				.role(user.getRole())
+				.admin(user.isAdmin())
 				.build();
 	}
 

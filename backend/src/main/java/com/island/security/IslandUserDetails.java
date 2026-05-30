@@ -20,10 +20,15 @@ public class IslandUserDetails implements UserDetails {
 
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
-		if (user.isVipActive()) {
-			return List.of(new SimpleGrantedAuthority("ROLE_VIP"), new SimpleGrantedAuthority("ROLE_USER"));
+		var roles = new java.util.ArrayList<GrantedAuthority>();
+		roles.add(new SimpleGrantedAuthority("ROLE_USER"));
+		if (user.isAdmin()) {
+			roles.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
 		}
-		return List.of(new SimpleGrantedAuthority("ROLE_USER"));
+		if (user.isVipActive()) {
+			roles.add(new SimpleGrantedAuthority("ROLE_VIP"));
+		}
+		return roles;
 	}
 
 	@Override

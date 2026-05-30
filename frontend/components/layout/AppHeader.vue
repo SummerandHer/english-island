@@ -21,6 +21,13 @@
 
       <div class="flex items-center gap-3">
         <template v-if="auth.isLoggedIn">
+          <NuxtLink
+            v-if="auth.isAdmin"
+            to="/admin/videos"
+            class="hidden text-sm text-[var(--island-primary)] sm:inline"
+          >
+            管理后台
+          </NuxtLink>
           <div class="user-chip hidden sm:flex">
             <span class="user-avatar">{{ avatarLetter }}</span>
             <span class="user-name">{{ auth.user?.nickname }}</span>

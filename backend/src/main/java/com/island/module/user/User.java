@@ -41,6 +41,8 @@ public class User {
 
 	private Integer status = 1;
 
+	private String role = "USER";
+
 	@TableField("last_login_at")
 	private LocalDateTime lastLoginAt;
 
@@ -49,6 +51,10 @@ public class User {
 
 	@TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
 	private LocalDateTime updatedAt;
+
+	public boolean isAdmin() {
+		return "ADMIN".equalsIgnoreCase(role);
+	}
 
 	public boolean isVipActive() {
 		if (vipLevel == null || vipLevel < 1) {

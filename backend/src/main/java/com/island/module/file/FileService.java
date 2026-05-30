@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -64,6 +67,45 @@ public class FileService {
 		asset.setSizeBytes(safeSize(file.getSize()));
 		fileAssetMapper.insert(asset);
 
+		return toDto(asset);
+	}
+
+	@Transactional
+	public FileDto uploadFromPath(Long userId, Path path, String originalName, String mimeType, String folder) {
+		if (!Files.exists(path)) {
+			throw new BusinessException("文件不存在");
+		}
+		if (mimeType == null || (!ALLOWED_IMAGE_MIME.contains(mimeType) && !ALLOWED_VIDEO_MIME.contains(mimeType))) {
+			throw new BusinessException("不支持的文件类型");
+		}
+		long size;
+		try {
+			size = Files.size(path);
+		} catch (IOException e) {
+			throw new BusinessException("读取文件失败");
+		}
+		long maxBytes = islandProperties.getUpload().getMaxSizeMb() * 1024 * 1024;
+		if (size > maxBytes) {
+			throw new BusinessException("文件不能超过 " + islandProperties.getUpload().getMaxSizeMb() + "MB");
+		}
+		String ext = resolveExtension(mimeType, originalName);
+		String objectKey = folder + "/" + UUID.randomUUID() + ext;
+		try (InputStream in = Files.newInputStream(path)) {
+			fileStorageService.upload(in, objectKey, mimeType, size);
+		} catch (IOException e) {
+			throw new BusinessException("读取上传文件失败: " + e.getMessage());
+		}
+		FileAsset asset = new FileAsset();
+		asset.setUserId(userId);
+		asset.setStorageType(fileStorageService.getStorageType());
+		if ("oss".equals(fileStorageService.getStorageType())) {
+			asset.setBucket(islandProperties.getOss().getBucket());
+		}
+		asset.setObjectKey(objectKey);
+		asset.setOriginalName(originalName);
+		asset.setMimeType(mimeType);
+		asset.setSizeBytes(safeSize(size));
+		fileAssetMapper.insert(asset);
 		return toDto(asset);
 	}
 

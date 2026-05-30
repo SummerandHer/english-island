@@ -17,6 +17,9 @@ public class IslandProperties {
 	private Cors cors = new Cors();
 	private Ai ai = new Ai();
 	private Verification verification = new Verification();
+	private Ffmpeg ffmpeg = new Ffmpeg();
+	private Whisper whisper = new Whisper();
+	private Admin admin = new Admin();
 
 	@Data
 	public static class Verification {
@@ -52,6 +55,25 @@ public class IslandProperties {
 	@Data
 	public static class Cors {
 		private List<String> allowedOrigins = List.of("http://localhost:3000");
+	}
+
+	@Data
+	public static class Ffmpeg {
+		private String path = "E:/software/ffmpeg/bin/ffmpeg.exe";
+	}
+
+	@Data
+	public static class Whisper {
+		private String python = "python";
+		private String scriptPath = "scripts/whisper_transcribe.py";
+		private String model = "small";
+		private String device = "cuda";
+		private String hfEndpoint = "https://hf-mirror.com";
+	}
+
+	@Data
+	public static class Admin {
+		private int minSentencesOnPublish = 1;
 	}
 
 	@Data

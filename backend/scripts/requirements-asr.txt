@@ -1,0 +1,2 @@
+# ISLAND 视频 ASR 依赖（开发机安装：pip install -r requirements-asr.txt）
+faster-whisper>=1.1.0

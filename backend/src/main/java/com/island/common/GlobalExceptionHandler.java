@@ -3,6 +3,7 @@ package com.island.common;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -22,6 +23,12 @@ public class GlobalExceptionHandler {
 				: HttpStatus.BAD_REQUEST;
 		return ResponseEntity.status(status)
 				.body(ApiResponse.fail(ex.getCode(), ex.getMessage()));
+	}
+
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+				.body(ApiResponse.fail(403, "无权限访问"));
 	}
 
 	@ExceptionHandler(BadCredentialsException.class)

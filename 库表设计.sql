@@ -2,6 +2,7 @@
 -- ISLAND（四六级岛）数据库 DDL
 -- 引擎：MySQL 8.0+  |  字符集：utf8mb4  |  排序：utf8mb4_unicode_ci
 -- 说明：MVP 单体架构；VIP 支付、评论等为第二期，表结构已预留
+-- 与 backend Flyway 迁移 V1~V4 保持一致（V3: email_verified，V4: role）
 -- =============================================================================
 
 CREATE DATABASE IF NOT EXISTS island
@@ -16,7 +17,8 @@ USE island;
 
 CREATE TABLE `user` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户ID',
-  `email`         VARCHAR(128)    NULL COMMENT '邮箱（MVP 登录）',
+  `email`         VARCHAR(128)    NULL COMMENT '邮箱（QQ 邮箱登录）',
+  `email_verified` TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '邮箱是否已验证（注册/重置密码后为 1）',
   `phone`         VARCHAR(20)     NULL COMMENT '手机号（第二期）',
   `password_hash` VARCHAR(255)    NULL COMMENT 'bcrypt 密码哈希',
   `nickname`      VARCHAR(64)     NOT NULL DEFAULT '岛民' COMMENT '昵称',
@@ -24,6 +26,7 @@ CREATE TABLE `user` (
   `vip_level`     TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0普通 1VIP',
   `vip_expire_at` DATETIME        NULL COMMENT 'VIP 到期时间，NULL 表示非 VIP',
   `status`        TINYINT         NOT NULL DEFAULT 1 COMMENT '1正常 0禁用',
+  `role`          VARCHAR(16)     NOT NULL DEFAULT 'USER' COMMENT 'USER普通用户 ADMIN管理员（管理后台）',
   `last_login_at` DATETIME        NULL COMMENT '最后登录时间',
   `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -32,6 +35,8 @@ CREATE TABLE `user` (
   UNIQUE KEY `uk_user_phone` (`phone`),
   KEY `idx_user_vip` (`vip_level`, `vip_expire_at`)
 ) ENGINE=InnoDB COMMENT='用户主表';
+
+-- 管理员账号：UPDATE `user` SET `role` = 'ADMIN' WHERE `email` = 'your@qq.com';
 
 CREATE TABLE `user_wechat` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -82,7 +87,7 @@ CREATE TABLE `vip_order` (
 ) ENGINE=InnoDB COMMENT='VIP 订单';
 
 -- -----------------------------------------------------------------------------
--- 3. 文件资源（社区图片、头像；后期迁 OSS）
+-- 3. 文件资源（社区图片、封面、双语视频源文件；local/OSS 由 island.upload.storage-type 控制）
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE `file_asset` (
@@ -92,7 +97,7 @@ CREATE TABLE `file_asset` (
   `bucket`        VARCHAR(64)     NULL COMMENT 'OSS bucket，local 时为空',
   `object_key`    VARCHAR(512)    NOT NULL COMMENT '相对路径或 OSS key',
   `original_name` VARCHAR(255)    NULL COMMENT '原始文件名',
-  `mime_type`     VARCHAR(64)     NOT NULL COMMENT 'image/jpeg 等',
+  `mime_type`     VARCHAR(64)     NOT NULL COMMENT 'image/jpeg、video/mp4 等',
   `size_bytes`    INT UNSIGNED    NOT NULL DEFAULT 0,
   `width`         INT UNSIGNED    NULL,
   `height`        INT UNSIGNED    NULL,
@@ -100,7 +105,7 @@ CREATE TABLE `file_asset` (
   PRIMARY KEY (`id`),
   KEY `idx_file_user` (`user_id`),
   CONSTRAINT `fk_file_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB COMMENT='上传文件元数据';
+) ENGINE=InnoDB COMMENT='上传文件元数据（图片、视频等）';
 
 -- -----------------------------------------------------------------------------
 -- 4. 内容来源与合规
@@ -301,8 +306,8 @@ CREATE TABLE `user_vocabulary` (
 
 -- -----------------------------------------------------------------------------
 -- 8. 双语视频模块
+-- storage_type=embed：B 站 Embed + 手工句轴；storage_type=oss：管理后台上传 + ASR 自托管
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE `video_series` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `title`       VARCHAR(200)    NOT NULL COMMENT '系列名，如 TEco Lab',
@@ -320,21 +325,21 @@ CREATE TABLE `video` (
   `title`         VARCHAR(200)    NOT NULL,
   `description`   VARCHAR(1000)   NULL,
   `cover_url`     VARCHAR(512)    NULL,
-  `storage_type`  ENUM('embed','oss') NOT NULL DEFAULT 'embed' COMMENT 'MVP=embed，后期 4K=oss',
-  `provider`      ENUM('bilibili','youtube','self') NOT NULL DEFAULT 'bilibili',
-  `source_url`    VARCHAR(512)    NOT NULL COMMENT 'B 站原页 URL',
-  `embed_bvid`    VARCHAR(20)     NULL COMMENT 'BV 号，如 BV1qP4y1M7cb',
+  `storage_type`  ENUM('embed','oss') NOT NULL DEFAULT 'embed' COMMENT 'embed=B站Embed oss=自托管（上传/OSS）',
+  `provider`      ENUM('bilibili','youtube','self') NOT NULL DEFAULT 'bilibili' COMMENT 'self=平台自托管',
+  `source_url`    VARCHAR(512)    NOT NULL COMMENT 'B站原页 URL；自托管时通常为 play_url',
+  `embed_bvid`    VARCHAR(20)     NULL COMMENT 'BV 号（embed 时），如 BV1qP4y1M7cb',
   `embed_aid`     BIGINT          NULL COMMENT 'B 站 av/aid（可选）',
   `embed_cid`     BIGINT          NULL COMMENT 'B 站分 P cid（可选）',
-  `play_url`      VARCHAR(512)    NULL COMMENT 'storage_type=oss 时的 CDN 地址',
+  `play_url`      VARCHAR(512)    NULL COMMENT '自托管播放地址（OSS/CDN 或 /uploads/）',
   `duration_sec`  INT UNSIGNED    NULL COMMENT '时长（秒）',
   `difficulty`    ENUM('easy','medium','hard') NOT NULL DEFAULT 'medium',
   `is_vip`        TINYINT         NOT NULL DEFAULT 0 COMMENT '1=专属视频',
   `view_count`    INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '站内播放计数',
   `sort_order`    INT             NOT NULL DEFAULT 0,
   `source_id`     INT UNSIGNED    NULL,
-  `license_note`  VARCHAR(512)    NULL,
-  `status`        TINYINT         NOT NULL DEFAULT 1 COMMENT '1上架 0下架',
+  `license_note`  VARCHAR(512)    NULL COMMENT '来源/授权说明（可选）',
+  `status`        TINYINT         NOT NULL DEFAULT 1 COMMENT '1上架 0下架/草稿',
   `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -351,8 +356,8 @@ CREATE TABLE `video_sentence` (
   `seq`       INT UNSIGNED    NOT NULL COMMENT '句子序号，从 1 开始',
   `start_ms`  INT UNSIGNED    NOT NULL COMMENT '开始毫秒',
   `end_ms`    INT UNSIGNED    NOT NULL COMMENT '结束毫秒',
-  `text_en`   TEXT            NOT NULL,
-  `text_zh`   TEXT            NOT NULL,
+  `text_en`   TEXT            NOT NULL COMMENT '英文句（ASR 或手工录入）',
+  `text_zh`   TEXT            NOT NULL COMMENT '中文句（可空字符串，允许先发布纯英文）',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_vs_video_seq` (`video_id`, `seq`),
   KEY `idx_vs_video_time` (`video_id`, `start_ms`),
@@ -454,7 +459,7 @@ CREATE TABLE `admin_audit_log` (
 ) ENGINE=InnoDB COMMENT='后台操作审计';
 
 -- -----------------------------------------------------------------------------
--- 11. 初始种子（可选，开发环境）
+-- 11. 初始种子（可选，开发环境；完整种子见 Flyway V2__seed_data.sql）
 -- -----------------------------------------------------------------------------
 
 INSERT INTO `content_source` (`name`, `source_type`, `source_url`, `license_note`) VALUES

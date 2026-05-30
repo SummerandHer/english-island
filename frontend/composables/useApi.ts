@@ -35,5 +35,26 @@ export function useApi() {
     }
   }
 
-  return { request, apiBase: config.public.apiBase }
+  async function uploadForm<T>(path: string, formData: FormData, timeoutMs = 1_200_000): Promise<T> {
+    const headers: Record<string, string> = {}
+    if (auth.token) {
+      headers.Authorization = `Bearer ${auth.token}`
+    }
+    try {
+      const res = await $fetch<ApiResponse<T>>(`${config.public.apiBase}${path}`, {
+        method: 'POST',
+        body: formData,
+        headers,
+        timeout: timeoutMs
+      })
+      if (res.code !== 0) {
+        throw new Error(res.message || '请求失败')
+      }
+      return res.data as T
+    } catch (error: unknown) {
+      throw new Error(extractErrorMessage(error))
+    }
+  }
+
+  return { request, uploadForm, apiBase: config.public.apiBase }
 }

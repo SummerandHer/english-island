@@ -8,7 +8,8 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isLoggedIn: (s) => !!s.token,
-    isVip: (s) => !!s.user?.vip
+    isVip: (s) => !!s.user?.vip,
+    isAdmin: (s) => !!s.user?.admin || s.user?.role === 'ADMIN'
   },
   actions: {
     hydrate() {
