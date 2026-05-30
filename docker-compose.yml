@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: island-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: island
+      MYSQL_USER: island
+      MYSQL_PASSWORD: island123
+    ports:
+      - "3306:3306"
+    volumes:
+      - island_mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: island-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  island_mysql_data:

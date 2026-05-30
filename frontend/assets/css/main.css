@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --island-primary: #18a058;
+  --island-bg: #f7f8fa;
+}
+
+body {
+  @apply bg-[#f7f8fa] text-gray-800 antialiased;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.island-card {
+  @apply rounded-xl bg-white shadow-sm;
+}

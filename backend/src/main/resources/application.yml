@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: island-backend
+  datasource:
+    url: jdbc:mysql://localhost:3306/island?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: island
+    password: island123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 20MB
+
+server:
+  port: 8080
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: auto
+      table-underline: true
+
+island:
+  jwt:
+    secret: change-me-in-production-use-at-least-256-bit-secret-key!!
+    expiration-ms: 604800000
+  upload:
+    dir: ../uploads
+  cors:
+    allowed-origins: http://localhost:3000
+  ai:
+    enabled: false
+    provider: deepseek
+    api-key: ""
+    base-url: https://api.deepseek.com
+
+logging:
+  level:
+    com.island: DEBUG
