@@ -199,7 +199,7 @@ public class AdminVideoService {
 			throw new BusinessException("视频尚无字幕");
 		}
 		List<String> en = sentences.stream().map(VideoSentence::getTextEn).toList();
-		List<String> zh = sentenceZhDraftService.generateDrafts(en);
+		List<String> zh = sentenceZhDraftService.generateDrafts(en, true);
 		var drafts = new ArrayList<ParseVideoResponse.SentenceDraft>();
 		for (int i = 0; i < sentences.size(); i++) {
 			VideoSentence s = sentences.get(i);

@@ -82,5 +82,9 @@ public class IslandProperties {
 		private String provider;
 		private String apiKey;
 		private String baseUrl;
+		private String model = "deepseek-chat";
+		private int timeoutSeconds = 120;
+		/** 视频字幕中译时每批句子数 */
+		private int zhDraftBatchSize = 40;
 	}
 }

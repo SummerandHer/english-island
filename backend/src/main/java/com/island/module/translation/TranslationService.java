@@ -67,7 +67,7 @@ public class TranslationService {
 			throw new BusinessException(404, "题目不存在");
 		}
 		String prompt = "zh2en".equals(q.getDirection()) ? q.getPromptZh() : q.getPromptEn();
-		var grading = gradingService.grade(prompt, q.getReferenceAnswer(), request.getUserAnswer());
+		var grading = gradingService.grade(q.getDirection(), prompt, q.getReferenceAnswer(), request.getUserAnswer());
 
 		TranslationSubmission sub = new TranslationSubmission();
 		sub.setUserId(userId);
@@ -77,12 +77,12 @@ public class TranslationService {
 		sub.setOverallComment(grading.overallComment());
 		sub.setErrorsJson(grading.errors());
 		sub.setReferenceHint(grading.referenceHint());
-		sub.setAiModel("fallback");
+		sub.setAiModel(grading.aiModel());
 		sub.setAiRawResponse(grading.rawResponse());
 		submissionMapper.insert(sub);
 
 		return new SubmissionResult(sub.getId(), grading.score(), grading.overallComment(),
-				grading.errors(), grading.referenceHint());
+				grading.errors(), grading.referenceHint(), grading.aiModel());
 	}
 
 	private void checkVip(Integer isVip, IslandUserDetails userDetails) {
@@ -121,5 +121,5 @@ public class TranslationService {
 	}
 
 	public record SubmissionResult(Long submissionId, int score, String overallComment,
-			List<java.util.Map<String, String>> errors, String referenceHint) {}
+			List<java.util.Map<String, String>> errors, String referenceHint, String aiModel) {}
 }
