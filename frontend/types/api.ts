@@ -29,6 +29,23 @@ export interface VideoSentence {
   textZh: string
 }
 
+export interface VideoSummary {
+  id: number
+  title: string
+  description?: string
+  coverUrl?: string
+  durationSec?: number
+  difficulty: string
+  tags: string[]
+  sentenceCount: number
+  vocabCount: number
+  vip: boolean
+  favorited: boolean
+  createdAt?: string
+}
+
+export type SubtitleMode = 'bilingual' | 'en' | 'zh'
+
 export interface VideoDetail {
   id: number
   title: string
@@ -40,6 +57,8 @@ export interface VideoDetail {
   embedBvid?: string
   playUrl?: string
   durationSec?: number
+  vocabCount?: number
+  sentenceCount?: number
   vip: boolean
   favorited: boolean
   sentences: VideoSentence[]

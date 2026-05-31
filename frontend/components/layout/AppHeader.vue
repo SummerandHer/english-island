@@ -1,6 +1,6 @@
 <template>
-  <header class="app-header">
-    <div class="app-header-inner">
+  <header class="app-header" :class="{ 'app-header--immersive': immersive }">
+    <div class="app-header-inner" :class="{ 'app-header-inner--wide': immersive }">
       <div class="flex items-center gap-8">
         <NuxtLink to="/" class="app-logo">
           <span class="app-logo-mark">ISLAND</span>
@@ -45,6 +45,8 @@
 </template>
 
 <script setup lang="ts">
+defineProps<{ immersive?: boolean }>()
+
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -82,8 +84,16 @@ function logout() {
   @apply sticky top-0 z-50 border-b border-gray-100/80 bg-white/90 backdrop-blur-md;
 }
 
+.app-header--immersive {
+  @apply sticky top-0 border-b border-gray-100 bg-white;
+}
+
 .app-header-inner {
   @apply mx-auto flex h-14 max-w-6xl items-center justify-between px-4;
+}
+
+.app-header-inner--wide {
+  @apply max-w-none px-6;
 }
 
 .app-logo {

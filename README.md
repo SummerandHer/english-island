@@ -200,8 +200,8 @@ island:
 | 翻译章节 | GET | `/translation/chapters` | 否 |
 | 翻译题目 | GET | `/translation/questions` | 否 |
 | 翻译批改 | POST | `/translation/submissions` | 是 |
-| 视频列表 | GET | `/videos` | 否 |
-| 视频详情+句轴 | GET | `/videos/{id}` | 否 |
+| 视频列表（分页） | GET | `/videos?page=1&size=7` | 否 |
+| 视频详情+句轴 | GET | `/videos/{id}` | 否（VIP 视频 403） |
 | 收藏视频 | POST | `/videos/{id}/favorite` | 是 |
 | Feed | GET | `/posts?page=1&size=20` | 否 |
 | 发帖 | POST | `/posts` | 是 |
