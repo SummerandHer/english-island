@@ -29,8 +29,7 @@ public class VideoController {
 	public ApiResponse<VideoService.VideoDetail> detail(
 			@PathVariable Long id,
 			@AuthenticationPrincipal IslandUserDetails userDetails) {
-		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
-		return ApiResponse.ok(videoService.getVideo(id, userId));
+		return ApiResponse.ok(videoService.getVideo(id, userDetails));
 	}
 
 	@PostMapping("/{id}/favorite")

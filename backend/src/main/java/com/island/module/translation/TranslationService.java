@@ -11,7 +11,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -81,8 +85,85 @@ public class TranslationService {
 		sub.setAiRawResponse(grading.rawResponse());
 		submissionMapper.insert(sub);
 
-		return new SubmissionResult(sub.getId(), grading.score(), grading.overallComment(),
-				grading.errors(), grading.referenceHint(), grading.aiModel());
+		return toSubmissionResult(sub.getId(), grading);
+	}
+
+	public List<SubmissionSummary> listMySubmissions(Long userId, int limit) {
+		int size = Math.clamp(limit, 1, 50);
+		List<TranslationSubmission> subs = submissionMapper.selectList(new LambdaQueryWrapper<TranslationSubmission>()
+				.eq(TranslationSubmission::getUserId, userId)
+				.orderByDesc(TranslationSubmission::getCreatedAt)
+				.last("LIMIT " + size));
+		if (subs.isEmpty()) {
+			return List.of();
+		}
+
+		List<Long> questionIds = subs.stream()
+				.map(TranslationSubmission::getQuestionId)
+				.distinct()
+				.toList();
+		Map<Long, TranslationQuestion> questions = questionMapper.selectBatchIds(questionIds).stream()
+				.collect(Collectors.toMap(TranslationQuestion::getId, Function.identity()));
+
+		return subs.stream()
+				.map(sub -> toSubmissionSummary(sub, questions.get(sub.getQuestionId())))
+				.toList();
+	}
+
+	private SubmissionResult toSubmissionResult(Long submissionId, TranslationGradingService.GradingResult grading) {
+		int score = grading.score();
+		var band = TranslationCetScore.bandFromScore100(score);
+		return new SubmissionResult(
+				submissionId,
+				score,
+				TranslationCetScore.toCetScore(score),
+				band.code(),
+				band.label(),
+				band.description(),
+				grading.overallComment(),
+				grading.errors(),
+				grading.referenceHint(),
+				grading.aiModel()
+		);
+	}
+
+	private SubmissionSummary toSubmissionSummary(TranslationSubmission sub, TranslationQuestion question) {
+		int score = sub.getScore() != null ? sub.getScore() : 0;
+		var band = TranslationCetScore.bandFromScore100(score);
+		String promptPreview = promptPreview(question);
+		List<Map<String, String>> errors = sub.getErrorsJson() != null ? sub.getErrorsJson() : List.of();
+		return new SubmissionSummary(
+				sub.getId(),
+				sub.getQuestionId(),
+				promptPreview,
+				question != null ? question.getDirection() : null,
+				sub.getUserAnswer(),
+				score,
+				TranslationCetScore.toCetScore(score),
+				band.code(),
+				band.label(),
+				band.description(),
+				sub.getOverallComment(),
+				errors,
+				errors.size(),
+				sub.getReferenceHint(),
+				sub.getAiModel(),
+				sub.getCreatedAt()
+		);
+	}
+
+	private static String promptPreview(TranslationQuestion question) {
+		if (question == null) {
+			return "（题目已删除）";
+		}
+		String text = "zh2en".equals(question.getDirection())
+				? question.getPromptZh()
+				: question.getPromptEn();
+		if (text == null || text.isBlank()) {
+			return "（无题干）";
+		}
+		text = text.trim().replaceAll("\\s+", " ");
+		return text.length() > 60 ? text.substring(0, 60) + "…" : text;
 	}
 
 	private void checkVip(Integer isVip, IslandUserDetails userDetails) {
@@ -120,6 +201,35 @@ public class TranslationService {
 		}
 	}
 
-	public record SubmissionResult(Long submissionId, int score, String overallComment,
-			List<java.util.Map<String, String>> errors, String referenceHint, String aiModel) {}
+	public record SubmissionResult(
+			Long submissionId,
+			int score,
+			int cetScore,
+			String band,
+			String bandLabel,
+			String bandDescription,
+			String overallComment,
+			List<java.util.Map<String, String>> errors,
+			String referenceHint,
+			String aiModel
+	) {}
+
+	public record SubmissionSummary(
+			Long submissionId,
+			Long questionId,
+			String promptPreview,
+			String direction,
+			String userAnswer,
+			int score,
+			int cetScore,
+			String band,
+			String bandLabel,
+			String bandDescription,
+			String overallComment,
+			List<java.util.Map<String, String>> errors,
+			int errorCount,
+			String referenceHint,
+			String aiModel,
+			LocalDateTime createdAt
+	) {}
 }

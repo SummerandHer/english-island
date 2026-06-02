@@ -14,6 +14,7 @@ import java.util.List;
 public class ReadingService {
 
 	private final ReadingChapterMapper chapterMapper;
+	private final ReadingPassageService passageService;
 
 	public List<ReadingChapterSummary> listChapters() {
 		return chapterMapper.selectList(new LambdaQueryWrapper<ReadingChapter>()
@@ -37,7 +38,7 @@ public class ReadingService {
 				throw new BusinessException(403, "该章节为 VIP 高级技巧，请升级后阅读");
 			}
 		}
-		return ReadingChapterDetail.from(chapter);
+		return ReadingChapterDetail.from(chapter, passageService.listByChapterId(chapter.getId()));
 	}
 
 	public record ReadingChapterSummary(Long id, String title, String slug, String summary, boolean vip) {
@@ -46,9 +47,17 @@ public class ReadingService {
 		}
 	}
 
-	public record ReadingChapterDetail(Long id, String title, String slug, String summary, String contentHtml, boolean vip) {
-		static ReadingChapterDetail from(ReadingChapter c) {
-			return new ReadingChapterDetail(c.getId(), c.getTitle(), c.getSlug(), c.getSummary(), c.getContentHtml(), c.getIsVip() == 1);
+	public record ReadingChapterDetail(
+			Long id,
+			String title,
+			String slug,
+			String summary,
+			String contentHtml,
+			boolean vip,
+			List<ReadingPassageService.PassageSummary> passages) {
+		static ReadingChapterDetail from(ReadingChapter c, List<ReadingPassageService.PassageSummary> passages) {
+			return new ReadingChapterDetail(
+					c.getId(), c.getTitle(), c.getSlug(), c.getSummary(), c.getContentHtml(), c.getIsVip() == 1, passages);
 		}
 	}
 }

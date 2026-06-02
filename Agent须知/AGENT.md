@@ -8,13 +8,14 @@
 
 ## 1. 项目是什么
 
-**ISLAND（四六级岛）**：面向中国大陆大学生的 **CET-4/6 垂直学习 Web 平台**（MVP 周期 3 天，一人 + 双 Agent 协作）。
+**ISLAND（四六级岛）**：面向中国大陆大学生的 **CET-4/6 垂直学习 Web 平台**（MVP 已交付；当前 **v0.3 Phase 2.5**：阅读模拟 + 词汇每日 20 词可测，详见 [06-迭代路线图.md](./06-迭代路线图.md)）。
 
 | 模块 | 用户路径 | 后端域 |
 |------|----------|--------|
 | 首页 | `/` | — |
-| 阅读技巧 | `/reading` | `module/reading` |
-| 翻译技巧 + AI 批改 | `/translation` | `module/translation` |
+| 阅读技巧 + 模拟练习 | `/reading`、`/reading/practice/[id]` | `module/reading`（含 `ReadingPassageService`） |
+| 翻译技巧 + AI 批改 | `/translation`、`/translation/practice/[id]` | `module/translation` |
+| 每日词汇 | `/vocabulary` | `module/vocabulary` |
 | 双语视频精听 | `/video` | `module/video` |
 | 社区 Feed | `/feed` | `module/post` |
 | 管理后台（视频入库） | `/admin/**` | `module/video/admin` |
@@ -89,8 +90,9 @@ module/
   user/          User 实体（vipLevel, role, isVipActive(), isAdmin()）
   file/          通用文件 CRUD
   post/          社区 Feed + 图片上传
-  reading/       阅读章节只读 API
-  translation/     章节 + 题目 + TranslationGradingService（AI 批改，当前占位）
+  reading/       阅读章节 + 模拟篇章/判分（ReadingPassageService）
+  vocabulary/    每日 20 词、查词、生词本、复习队列
+  translation/     章节 + 题目 + TranslationGradingService（DeepSeek 批改，未配置 API 时 fallback）
   video/         用户端视频列表/详情/收藏
   video/admin/   Admin 视频流水线（parse → publish → 句轴编辑）
   video/asr/     WhisperAsrService
@@ -190,7 +192,7 @@ const { request, uploadForm } = useApi()  // composables/useApi.ts
 
 ### 9.2 V1 已建表、尚无 Java 实现（勿误加 API）
 
-`user_wechat`, `vip_plan`, `vip_order`, `reading_passage/question`, `vocabulary`, `user_vocabulary`, `post_like`, `post_comment`, `user_video_progress`, `content_source`, `admin_audit_log`, `sentence_pattern`
+`user_wechat`, `vip_plan`, `vip_order`, `reading_passage`, `reading_question`, `reading_question_option`, `vocabulary`, `user_vocabulary`, `user_vocab_review`, `post_like`, `post_comment`, `user_video_progress`, `content_source`, `admin_audit_log`, `sentence_pattern`
 
 ### 9.3 Flyway
 
@@ -200,6 +202,9 @@ const { request, uploadForm } = useApi()  // composables/useApi.ts
 | V2 | 种子：2 阅读章、2 翻译章、1 翻译题、3 embed 视频+句轴 |
 | V3 | `user.email_verified` |
 | V4 | `user.role`；首用户 ADMIN |
+| V7 | 阅读模拟：2 篇章×4 题 |
+| V8 | 词汇字段扩展 + `user_vocab_review` |
+| V9 | 词汇核心种子（约 70 词，可脚本扩至 800） |
 
 DDL 权威参考：`库表设计.sql`。**禁止** JPA `ddl-auto=update`。
 
@@ -248,7 +253,8 @@ cd frontend && npm install && npm run dev
 | 新增用户页 | `frontend/pages/` + `useApi` + 可选 `types/api.ts` |
 | 双语播放器/句轴 | `useVideoSync.ts`, `components/video/*`, `pages/video/[id].vue` |
 | Admin 视频流程 | `AdminVideoService`, `pages/admin/videos/*` |
-| 翻译 AI 批改 | `TranslationGradingService`（当前 `fallbackGrade` 占位） |
+| 翻译 AI 批改 | `TranslationGradingService`（`gradeWithLlm` + `fallbackGrade`） |
+| 阅读模拟题 Phase2 | `reading_passage/question` 表已有 → 见 [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md) |
 | 文件存储切换 | `island.upload.storage-type`, `OssFileStorageService` |
 | UI 视觉/布局 | 遵循 02/03 规范 + 参考图 |
 
@@ -256,11 +262,24 @@ cd frontend && npm install && npm run dev
 
 ## 13. 已知缺口与陷阱（避免重复踩坑）
 
-1. **TranslationGradingService**：AI 开关已接，LLM 调用未实现，返回占位分
+### 13.1 产品能力缺口（Phase 2 优先）
+
+| 模块 | 缺口 | 规划 |
+|------|------|------|
+| 阅读 | ~~仅章节 HTML~~；模拟题 API + 练习页 + V7 种子 | P0-1 已完成 |
+| 词汇 | V8 表扩展 + 70 词种子 + 每日 20 词 API/页；扩至 800 词见 `import_vocabulary.py` | Phase 2.5 基础已完成 |
+| 翻译 | 8 道模拟题（V10）、练习/历史/15 分制 | ✅ |
+| 备考导航 | `/exam-guide` | ✅ |
+| 词汇 800 | V9 约 70 词 | v1.0 / 脚本扩量 |
+| 双语 | VIP 视频逻辑不一致；Embed 无法真同步；新视频走 OSS | P0-6 + 运营上传 |
+
+### 13.2 技术债务
+
+1. **TranslationGradingService**：已实现 DeepSeek；`island.ai.api-key` 未配置时走 `fallbackGrade`（前端应展示「占位评分」标签，已实现）
 2. **VIP 视频**：`VideoService` 对 `isVip=1` 一律 403，未查用户 VIP 状态
-3. **B 站 Embed**：无法 seek/倍速/暂停联动句轴；模拟时钟仅为 MVP 演示
-4. **无 Token 刷新**；前端部分页仍用 `alert()` 报错
-5. **Admin 系列页**：仅创建+列表，无编辑/删除 UI
+3. **B 站 Embed**：无法 seek/倍速/暂停联动句轴；`useVideoSync` 模拟时钟仅为 MVP 演示
+4. **无 Token 刷新**；`reading/[slug].vue` 等仍用 `alert()` 报错
+5. **Admin 系列页**：仅创建+列表，无编辑/删除 UI；**无阅读/翻译题目 Admin**
 6. **multipart/连接超时** 20 分钟——大视频 ASR 专用，勿随意缩短
 7. **合规**：不爬真题批量入库、不下载转存 B 站/YouTube 视频到服务器
 
@@ -273,18 +292,54 @@ cd frontend && npm install && npm run dev
 - ❌ 在仓库提交 API Key、OSS Secret、邮件授权码
 - ❌ 社区帖支持视频/外链（产品约束）
 - ❌ 偏离 [03-双语模块UI规范.md](./03-双语模块UI规范.md) 布局（除非用户明确要求）
-- ❌ MVP 范围外功能（见 [项目规划.md](../项目规划.md) 第二期列表）
+- ❌ 未经确认擅自做 P2 词汇本/支付（见 [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)）
+- ❌ MVP 范围外大功能（见 [项目规划.md](../项目规划.md) 第二期列表）
 
 ---
 
-## 15. 阅读顺序（新会话 Agent）
+## 16. 竞品定位与差异化（ISLAND 应打什么牌）
+
+| 赛道 | 代表产品 | 强项 | ISLAND 不做 | ISLAND 做 |
+|------|----------|------|-------------|-----------|
+| 真题/词书 | 扇贝、金山词霸、星火 | 真题卷、背单词、名师解析 | 批量真题爬取 | **自编模拟题** + 技巧章节 |
+| AI 泛读 | AI Level English | 分级改写、逐句精读、闪卡 | 泛 CEFR 非考试 | **四六级题型**技巧 + 模拟练 |
+| AI 写作 | Ries、ChatGPT | 中式英语、通用批改 | 通用插件 | **汉译英定档扣分**（对齐大纲） |
+| 视频 | Ries、各平台 | 双语字幕 | 转存第三方视频 | **句轴精听** + 技巧联动 |
+
+**突破点（Phase 2）**：「章节方法论 → 同主题模拟题 → AI 分档批改 → 历史弱项 → 推荐双语精听」一条链；详见 [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)。
+
+---
+
+## 17. Phase 2 工作流（Agent 必遵）
+
+```
+需求/分析 → 读 06 路线图确认版本与项 → 04/05 细则 → Flyway/API → 前端 → 更新 06 + §13
+```
+
+| 版本 | 范围 | 状态 |
+|------|------|------|
+| **v0.3** | 阅读模拟、词汇 v0、翻译闭环 | ✅ |
+| **v0.4** | 8 翻译题、备考导航、VIP 视频、今日任务 | 🟡 核心已完成；词汇 800 待做 |
+| **v1.0** | Admin、支付、进度、OSS 视频库 | ⏳ **下一开发目标** |
+| **v1.0** | P1 Admin/进度/限时、支付、OSS 视频库 | 📋 见 [06-迭代路线图.md](./06-迭代路线图.md) §4 |
+
+**产品决策（已确认）**：词汇 **1B**；真题 **2A**；上线 **3A**；禁止 RACE 商用入库；新视频 **OSS**。
+
+动功能代码前：**必须先读** [06-迭代路线图.md](./06-迭代路线图.md)；阅读/翻译细则见 [04](./04-阅读翻译Phase2规划.md)；数据源见 [05](./05-内容与数据源规划.md)。
+
+---
+
+## 18. 阅读顺序（新会话 Agent）
 
 1. **本文件**（全局架构）
 2. [00-总览.md](./00-总览.md) → 按任务读 01 / 02 / 03
-3. 动数据库前读 `库表设计.sql` 或 `backend/.../db/migration/`
-4. 动双语 UI 前打开 `双语页面视频的展示参考模版.png`
-5. 不确定产品边界时读 [项目规划.md](../项目规划.md)
+3. **做阅读/翻译功能** → [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)
+4. **排期与待办** → [06-迭代路线图.md](./06-迭代路线图.md)（**首选**）
+5. **词汇/内容/合规** → [05-内容与数据源规划.md](./05-内容与数据源规划.md)
+6. 动数据库前读 `库表设计.sql` 或 `backend/.../db/migration/`（当前 **V9**）
+7. 动双语 UI 前打开 `双语页面视频的展示参考模版.png`
+8. 不确定产品边界时读 [项目规划.md](../项目规划.md)
 
 ---
 
-*最后同步：基于 workspace `english/` 源码；Flyway V4；含 Admin 视频 ASR/OSS 流水线。*
+*最后同步：Flyway V9；阅读模拟 + 词汇 API 已上线；路线图见 06；翻译种子 8 题与备考导航为 v0.4 首项。*

@@ -1,10 +1,16 @@
 <template>
-  <div v-if="loadError" class="island-card p-8 text-center">
-    <p class="text-lg font-medium text-gray-700">{{ loadError }}</p>
-    <NButton v-if="isVipError" class="mt-4" type="primary" @click="navigateTo('/login')">
-      登录 / 升级 VIP
-    </NButton>
-    <NButton v-else class="mt-4" @click="navigateTo('/video')">返回列表</NButton>
+  <div v-if="loadError" class="island-card p-8">
+    <VipUpgradeBanner
+      v-if="isVipError"
+      title="VIP 专属视频"
+      message="该视频为 VIP 专享。升级后可观看（支付功能即将上线）。"
+      back-to="/video"
+      @dismiss="navigateTo('/video')"
+    />
+    <template v-else>
+      <p class="text-lg font-medium text-gray-700">{{ loadError }}</p>
+      <NButton class="mt-4" @click="navigateTo('/video')">返回列表</NButton>
+    </template>
   </div>
 
   <div v-else-if="video" class="video-detail">

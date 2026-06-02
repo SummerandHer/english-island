@@ -8,6 +8,7 @@ import com.island.common.PageResult;
 import com.island.module.video.mapper.VideoFavoriteMapper;
 import com.island.module.video.mapper.VideoMapper;
 import com.island.module.video.mapper.VideoSentenceMapper;
+import com.island.security.IslandUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,14 +60,13 @@ public class VideoService {
 		return new PageResult<>(items, pageObj.getTotal(), safePage, safeSize);
 	}
 
-	public VideoDetail getVideo(Long id, Long userId) {
+	public VideoDetail getVideo(Long id, IslandUserDetails userDetails) {
 		Video video = videoMapper.selectById(id);
 		if (video == null || video.getStatus() != 1) {
 			throw new BusinessException(404, "视频不存在");
 		}
-		if (video.getIsVip() == 1) {
-			throw new BusinessException(403, "该视频为 VIP 专属内容");
-		}
+		checkVipVideo(video.getIsVip(), userDetails);
+		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
 		var sentences = sentenceMapper.selectList(new LambdaQueryWrapper<VideoSentence>()
 						.eq(VideoSentence::getVideoId, id)
 						.orderByAsc(VideoSentence::getSeq))
@@ -134,6 +134,15 @@ public class VideoService {
 				.eq(VideoFavorite::getUserId, userId)
 				.eq(VideoFavorite::getVideoId, videoId));
 		return count != null && count > 0;
+	}
+
+	private void checkVipVideo(Integer isVip, IslandUserDetails userDetails) {
+		if (isVip != null && isVip == 1) {
+			boolean vip = userDetails != null && userDetails.getUser().isVipActive();
+			if (!vip) {
+				throw new BusinessException(403, "该视频为 VIP 专属内容，请升级后观看");
+			}
+		}
 	}
 
 	private static List<String> buildTags(Video v) {

@@ -47,4 +47,11 @@ public class TranslationController {
 			@Valid @RequestBody SubmitTranslationRequest request) {
 		return ApiResponse.ok(translationService.submit(userDetails.getUser().getId(), request));
 	}
+
+	@GetMapping("/submissions/mine")
+	public ApiResponse<List<TranslationService.SubmissionSummary>> mySubmissions(
+			@AuthenticationPrincipal IslandUserDetails userDetails,
+			@RequestParam(defaultValue = "10") int limit) {
+		return ApiResponse.ok(translationService.listMySubmissions(userDetails.getUser().getId(), limit));
+	}
 }

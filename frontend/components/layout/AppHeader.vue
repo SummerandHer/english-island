@@ -54,6 +54,8 @@ const navItems = [
   { label: '首页', to: '/' },
   { label: '全平台', to: '/feed' },
   { label: '阅读', to: '/reading' },
+  { label: '备考', to: '/exam-guide' },
+  { label: '词汇', to: '/vocabulary' },
   { label: '翻译', to: '/translation' },
   { label: '双语', to: '/video' }
 ]

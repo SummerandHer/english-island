@@ -38,7 +38,10 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/api/v1/auth/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/reading/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/vocabulary/search").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/vocabulary/{id}").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/translation/chapters/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/translation/questions/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/videos/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/files/**").permitAll()

@@ -54,7 +54,9 @@ com.island
 ### 阅读 / 翻译章节
 
 - 章节：`title`, `sort_order`, `content_html`, `is_vip`（高级技巧）
+- 阅读练习（**Phase 2 P0**，表已建、API 待做）：`reading_passage` → `reading_question` + `reading_question_option`；提交可写 `user_reading_progress` 或独立 submission 表（优先复用客观题即时判分，不落 LLM）
 - 翻译题：`prompt_zh` / `prompt_en`, `reference_answer`, `is_mock`（模拟题标记）
+- Phase 2 任务清单：[04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)
 
 ### 翻译 AI 批改（MVP 必做接口）
 
@@ -69,8 +71,9 @@ Response: {
 }
 ```
 
-- 实现：`TranslationGradingService` 调用 LLM，Prompt 固定模板，结果落库 `translation_submission`
-- 配置：`application.yml` 中 `ai.provider`、`ai.api-key`（勿提交密钥到 Git）
+- 实现：`TranslationGradingService.gradeWithLlm`（四六级维度 Prompt）+ `fallbackGrade`；结果落库 `translation_submission`
+- Phase 2 增强：响应增加 `cetScore`（0–15）、`band`（档位）；`GET /translation/submissions/mine` 历史
+- 配置：`island.ai.enabled`、`island.ai.api-key`（勿提交密钥到 Git）
 
 ### 视频（含 4K 扩展预留）
 
