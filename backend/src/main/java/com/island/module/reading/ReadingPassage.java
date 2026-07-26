@@ -26,6 +26,9 @@ public class ReadingPassage {
 	@TableField("content_en")
 	private String contentEn;
 
+	@TableField("long_sentences_json")
+	private String longSentencesJson;
+
 	@TableField("word_count")
 	private Integer wordCount;
 

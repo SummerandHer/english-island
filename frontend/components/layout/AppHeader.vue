@@ -1,7 +1,8 @@
 <template>
   <header class="app-header" :class="{ 'app-header--immersive': immersive }">
     <div class="app-header-inner" :class="{ 'app-header-inner--wide': immersive }">
-      <div class="flex items-center gap-8">
+      <div class="flex items-center gap-3 md:gap-8">
+        <NButton class="md:hidden" quaternary size="small" @click="drawerOpen = true">☰</NButton>
         <NuxtLink to="/" class="app-logo">
           <span class="app-logo-mark">ISLAND</span>
           <span class="app-logo-sub hidden sm:inline">四六级岛</span>
@@ -19,8 +20,14 @@
         </nav>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 md:gap-3">
         <template v-if="auth.isLoggedIn">
+          <NuxtLink
+            to="/vocabulary?tab=notebook"
+            class="hidden text-sm text-gray-600 hover:text-[var(--island-primary)] sm:inline"
+          >
+            生词本
+          </NuxtLink>
           <NuxtLink
             v-if="auth.isAdmin"
             to="/admin/videos"
@@ -28,11 +35,11 @@
           >
             管理后台
           </NuxtLink>
-          <div class="user-chip hidden sm:flex">
+          <NuxtLink to="/me" class="user-chip hidden sm:flex">
             <span class="user-avatar">{{ avatarLetter }}</span>
             <span class="user-name">{{ auth.user?.nickname }}</span>
             <span v-if="auth.isVip" class="vip-badge">VIP</span>
-          </div>
+          </NuxtLink>
           <NButton size="small" quaternary @click="logout">退出</NButton>
         </template>
         <template v-else>
@@ -41,6 +48,22 @@
         </template>
       </div>
     </div>
+
+    <NDrawer v-model:show="drawerOpen" placement="left" :width="280">
+      <NDrawerContent title="导航" closable>
+        <nav class="flex flex-col gap-1">
+          <NuxtLink
+            v-for="item in allNavItems"
+            :key="item.to"
+            :to="item.to"
+            class="rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-green-50"
+            @click="drawerOpen = false"
+          >
+            {{ item.label }}
+          </NuxtLink>
+        </nav>
+      </NDrawerContent>
+    </NDrawer>
   </header>
 </template>
 
@@ -49,15 +72,23 @@ defineProps<{ immersive?: boolean }>()
 
 const auth = useAuthStore()
 const router = useRouter()
+const drawerOpen = ref(false)
 
 const navItems = [
-  { label: '首页', to: '/' },
-  { label: '全平台', to: '/feed' },
+  { label: '学习', to: '/' },
   { label: '阅读', to: '/reading' },
-  { label: '备考', to: '/exam-guide' },
+  { label: '仿真题', to: '/islands/exam' },
   { label: '词汇', to: '/vocabulary' },
   { label: '翻译', to: '/translation' },
-  { label: '双语', to: '/video' }
+  { label: '双语岛', to: '/video' }
+]
+
+const allNavItems = [
+  ...navItems,
+  { label: '备考', to: '/exam-guide' },
+  { label: '社区', to: '/feed' },
+  { label: '我的', to: '/me' },
+  { label: '生词本', to: '/vocabulary?tab=notebook' }
 ]
 
 const avatarLetter = computed(() => {

@@ -6,9 +6,13 @@
           <NuxtLink to="/" class="text-sm text-gray-500">← 返回站点</NuxtLink>
           <span class="font-semibold text-[var(--island-primary)]">ISLAND 管理后台</span>
         </div>
-        <nav class="flex gap-4 text-sm">
+        <nav class="flex flex-wrap gap-4 text-sm">
           <NuxtLink to="/admin/videos" class="text-gray-600 hover:text-[var(--island-primary)]">双语视频</NuxtLink>
           <NuxtLink to="/admin/series" class="text-gray-600 hover:text-[var(--island-primary)]">系列</NuxtLink>
+          <NuxtLink to="/admin/translation" class="text-gray-600 hover:text-[var(--island-primary)]">翻译题</NuxtLink>
+          <NuxtLink to="/admin/reading" class="text-gray-600 hover:text-[var(--island-primary)]">阅读题</NuxtLink>
+          <NuxtLink to="/admin/daily" class="text-gray-600 hover:text-[var(--island-primary)]">日报岛</NuxtLink>
+          <NuxtLink to="/admin/sim-exam" class="text-gray-600 hover:text-[var(--island-primary)]">仿真题岛</NuxtLink>
         </nav>
       </div>
     </header>

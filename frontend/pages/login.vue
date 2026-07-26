@@ -43,6 +43,7 @@ definePageMeta({ layout: false, ssr: false })
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const message = useAppMessage()
 const { request } = useApi()
 
@@ -65,9 +66,17 @@ const rules: FormRules = {
   ]
 }
 
+function postLoginPath() {
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')) {
+    return redirect
+  }
+  return '/'
+}
+
 onMounted(() => {
   auth.hydrate()
-  if (auth.isLoggedIn) router.replace('/')
+  if (auth.isLoggedIn) router.replace(postLoginPath())
 })
 
 async function submit() {
@@ -80,7 +89,7 @@ async function submit() {
     })
     auth.setAuth(data)
     message.success('登录成功')
-    router.push('/')
+    router.push(postLoginPath())
   } catch (e: unknown) {
     message.error(e instanceof Error ? e.message : '登录失败')
   } finally {

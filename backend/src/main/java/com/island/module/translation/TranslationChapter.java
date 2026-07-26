@@ -33,6 +33,9 @@ public class TranslationChapter {
 	@TableField("is_vip")
 	private Integer isVip = 0;
 
+	@TableField("recommended_video_id")
+	private Long recommendedVideoId;
+
 	private Integer status = 1;
 
 	@TableField(value = "created_at", fill = FieldFill.INSERT)

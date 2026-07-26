@@ -1,5 +1,7 @@
 package com.island.module.reading;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.island.common.BusinessException;
 import com.island.module.reading.dto.SubmitReadingRequest;
@@ -21,6 +23,7 @@ public class ReadingPassageService {
 	private final ReadingPassageMapper passageMapper;
 	private final ReadingQuestionMapper questionMapper;
 	private final ReadingQuestionOptionMapper optionMapper;
+	private final ObjectMapper objectMapper;
 
 	public List<PassageSummary> listByChapterId(Long chapterId) {
 		return passageMapper.selectList(new LambdaQueryWrapper<ReadingPassage>()
@@ -63,6 +66,7 @@ public class ReadingPassageService {
 				passage.getChapterId(),
 				passage.getTitle(),
 				passage.getContentEn(),
+				parseLongSentences(passage.getLongSentencesJson()),
 				passage.getWordCount(),
 				passage.getDifficulty(),
 				passage.getIsMock() == 1,
@@ -148,6 +152,10 @@ public class ReadingPassageService {
 		return passage;
 	}
 
+	public ReadingPassage getPassageEntity(Long passageId) {
+		return requirePassage(passageId);
+	}
+
 	private List<ReadingQuestion> loadQuestions(Long passageId) {
 		return questionMapper.selectList(new LambdaQueryWrapper<ReadingQuestion>()
 				.eq(ReadingQuestion::getPassageId, passageId)
@@ -171,6 +179,20 @@ public class ReadingPassageService {
 				.eq(ReadingQuestion::getPassageId, passageId)));
 	}
 
+	private List<LongSentenceItem> parseLongSentences(String json) {
+		if (json == null || json.isBlank()) {
+			return List.of();
+		}
+		try {
+			return objectMapper.readValue(json, new TypeReference<List<LongSentenceItem>>() {});
+		} catch (Exception e) {
+			return List.of();
+		}
+	}
+
+	public record LongSentenceItem(String en, String zh, String hint) {
+	}
+
 	public record PassageSummary(
 			Long id,
 			Long chapterId,
@@ -186,6 +208,7 @@ public class ReadingPassageService {
 			Long chapterId,
 			String title,
 			String contentEn,
+			List<LongSentenceItem> longSentences,
 			Integer wordCount,
 			String difficulty,
 			boolean mock,

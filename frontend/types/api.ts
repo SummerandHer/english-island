@@ -188,6 +188,16 @@ export interface ReadingPassageSummary {
   questionCount: number
 }
 
+export interface TranslationChapterDetail {
+  id: number
+  title: string
+  slug: string
+  summary?: string
+  contentHtml: string
+  vip: boolean
+  recommendedVideo?: VideoSummary | null
+}
+
 export interface ReadingChapterDetail {
   id: number
   title: string
@@ -195,7 +205,9 @@ export interface ReadingChapterDetail {
   summary?: string
   contentHtml: string
   vip: boolean
+  finished?: boolean
   passages: ReadingPassageSummary[]
+  recommendedVideo?: VideoSummary | null
 }
 
 export interface ReadingQuestionOption {
@@ -211,11 +223,18 @@ export interface ReadingQuestionItem {
   options: ReadingQuestionOption[]
 }
 
+export interface ReadingLongSentence {
+  en: string
+  zh: string
+  hint?: string
+}
+
 export interface ReadingPassagePractice {
   id: number
   chapterId: number
   title: string
   contentEn: string
+  longSentences?: ReadingLongSentence[]
   wordCount?: number
   difficulty: string
   mock: boolean
@@ -263,7 +282,17 @@ export interface VocabTodayItem {
 export interface VocabTodayPlan {
   dueCount: number
   dailyLimit: number
+  examLevel?: string
   items: VocabTodayItem[]
+}
+
+export interface VocabCheckinStats {
+  streakDays: number
+  week: Array<{ date: string; checked: boolean }>
+}
+
+export interface VocabSettings {
+  examLevel: string
 }
 
 export interface ReadingSubmitResult {
@@ -273,6 +302,40 @@ export interface ReadingSubmitResult {
   totalQuestions: number
   answeredCount: number
   questions: ReadingQuestionResult[]
+}
+
+export interface ReadingSubmissionSummary {
+  submissionId: number
+  passageId: number
+  passageTitle: string
+  chapterSlug?: string
+  correctCount: number
+  totalQuestions: number
+  createdAt: string
+}
+
+export interface ReadingPassageLastScore {
+  correctCount: number
+  totalQuestions: number
+  createdAt: string
+}
+
+export interface VocabStats {
+  masteredCount: number
+  reviewTotal: number
+  notebookCount: number
+  todayDone: number
+  dailyLimit: number
+  todayRemaining: number
+  streakDays?: number
+  examLevel?: string
+}
+
+export interface VocabNotebookItem {
+  vocab: VocabListItem
+  sourceType?: string
+  sourceId?: number
+  note?: string
 }
 
 export interface TranslationSubmissionSummary {
@@ -292,4 +355,331 @@ export interface TranslationSubmissionSummary {
   referenceHint: string
   aiModel: string
   createdAt: string
+}
+
+/** GET /api/v1/learn/summary — aggregate learning dashboard (P2-2) */
+export interface LearnSummaryLastReading {
+  passageId: number
+  passageTitle: string
+  chapterSlug?: string
+  correctCount: number
+  totalQuestions: number
+  createdAt: string
+}
+
+export interface LearnSummaryLastTranslation {
+  questionId: number
+  promptPreview: string
+  cetScore: number
+  score: number
+  createdAt: string
+}
+
+export interface LearnSummaryNextTask {
+  href: string
+  label: string
+  action: '继续' | '开始'
+}
+
+export interface LearnSummaryNextReading extends LearnSummaryNextTask {
+  passageId: number
+  passageTitle: string
+  chapterSlug?: string
+  correctCount?: number
+  totalQuestions?: number
+  neverDone?: boolean
+  lowScore?: boolean
+}
+
+export interface LearnSummaryNextTranslation extends LearnSummaryNextTask {
+  questionId: number
+  promptPreview: string
+  lastCetScore?: number
+  neverDone?: boolean
+  lowScore?: boolean
+}
+
+export interface LearnSummarySuggestion {
+  type: 'vocab' | 'reading' | 'translation' | 'notebook'
+  label: string
+  href: string
+  action: '继续' | '开始'
+}
+
+export interface LearnSummary {
+  streakDays: number
+  vocab: {
+    dueCount: number
+    todayDone: number
+    dailyLimit: number
+    masteredCount: number
+    notebookCount: number
+    todayRemaining: number
+  }
+  lastReading: LearnSummaryLastReading | null
+  lastTranslation: LearnSummaryLastTranslation | null
+  nextVocab: LearnSummaryNextTask & { dueCount: number }
+  nextReading: LearnSummaryNextReading | null
+  nextTranslation: LearnSummaryNextTranslation | null
+  suggestions: LearnSummarySuggestion[]
+}
+
+export interface DailyTopic {
+  slug: string
+  label: string
+}
+
+export interface DailyArticleSummary {
+  id: number | null
+  title: string | null
+  slug: string | null
+  topic: string | null
+  topicLabel: string | null
+  difficulty: string | null
+  coverUrl: string | null
+  publishDate: string
+  wordCount: number | null
+  checkedIn: boolean
+  unlocked: boolean
+  weekdayLabel: string
+}
+
+export interface DailyAnnotation {
+  id: number
+  startOffset: number
+  endOffset: number
+  selectedText: string
+  color: string
+  note?: string | null
+}
+
+export interface DailyVocabItem {
+  word: string
+  zh?: string
+  pos?: string
+  note?: string
+  inGlossary?: boolean
+  vocabularyId?: number
+}
+
+export interface DailyStructureItem {
+  en: string
+  zh?: string
+  hint?: string
+}
+
+export interface DailyArticleDetail {
+  id: number
+  title: string
+  slug: string
+  topic: string
+  topicLabel: string
+  difficulty: string
+  contentEn: string
+  coverUrl?: string | null
+  summaryZh?: string | null
+  publishDate: string
+  sourcePublishedAt?: string | null
+  sourceAuthor?: string | null
+  sourcePlace?: string | null
+  wordCount?: number | null
+  cetVocab: DailyVocabItem[]
+  hardVocab: DailyVocabItem[]
+  structures: DailyStructureItem[]
+  checkedIn: boolean
+  annotations: DailyAnnotation[]
+  related: DailyArticleSummary[]
+}
+
+export interface DailyHubPayload {
+  weekSlots: DailyArticleSummary[]
+  archive: DailyArticleSummary[]
+  streakDays: number
+  todayArticle: DailyArticleSummary | null
+  topics: DailyTopic[]
+}
+
+export interface AdminDailyArticleSummary {
+  id: number
+  title: string
+  slug: string
+  topic: string
+  difficulty: string
+  publishDate: string
+  status: string
+  wordCount?: number | null
+  coverUrl?: string | null
+}
+
+export interface AdminDailyArticleDetail {
+  id: number
+  title: string
+  slug: string
+  topic: string
+  difficulty: string
+  contentEn: string
+  coverUrl?: string | null
+  coverAssetId?: number | null
+  summaryZh?: string | null
+  publishDate: string
+  sourceId?: number | null
+  sourcePublishedAt?: string | null
+  sourceAuthor?: string | null
+  sourcePlace?: string | null
+  cetVocabJson?: string | null
+  hardVocabJson?: string | null
+  structuresJson?: string | null
+  wordCount?: number | null
+  status: string
+  aiStatus?: string | null
+  aiError?: string | null
+  aiVersion?: string | null
+}
+
+export interface DailyAiEnrichmentResult {
+  gate: 'ok' | 'needs_review' | 'failed' | string
+  warnings: string[]
+  error?: string | null
+  aiVersion?: string | null
+  summaryZh?: string | null
+  topic?: string | null
+  difficulty?: string | null
+  slugSuggestion?: string | null
+  wordCount?: number | null
+  coverHint?: string | null
+  cetVocabJson?: string | null
+  hardVocabJson?: string | null
+  structuresJson?: string | null
+  aiRawJson?: string | null
+  cetVocab?: DailyVocabItem[]
+  hardVocab?: DailyVocabItem[]
+  structures?: DailyStructureItem[]
+}
+
+/** 仿真题岛 */
+export interface SimExamHub {
+  shortCount: number
+  longCount: number
+  complianceNote: string
+}
+
+export interface SimPassageCard {
+  id: number
+  title: string
+  examLevel: string
+  sectionType: string
+  wordCount?: number | null
+  vocabCount?: number | null
+  recommendedMinutes?: number | null
+  questionCount: number
+}
+
+export interface SimOptionView {
+  questionId: number
+  label: string
+  content: string
+}
+
+export interface SimQuestionPractice {
+  id: number
+  questionType: string
+  stem: string
+  sortOrder?: number
+  options: SimOptionView[]
+}
+
+export interface SimPracticeDetail {
+  id: number
+  title: string
+  examLevel: string
+  sectionType: string
+  contentEn: string
+  wordCount?: number | null
+  vocabCount?: number | null
+  recommendedMinutes?: number | null
+  paragraphs?: Array<{ label: string; text: string }>
+  questions: SimQuestionPractice[]
+}
+
+export interface SimQuestionResult {
+  questionId: number
+  stem: string
+  skillTag?: string | null
+  userLabel?: string | null
+  correctLabel?: string | null
+  correct: boolean
+  locateEn?: string | null
+  locateZh?: string | null
+  explainCorrect?: string | null
+  explainDistractors?: Record<string, string>
+  explainTip?: string | null
+  options: SimOptionView[]
+}
+
+export interface SimSubmitResult {
+  passageId: number
+  title: string
+  correctCount: number
+  totalQuestions: number
+  elapsedSeconds: number
+  recommendedMinutes?: number | null
+  contentEn: string
+  contentZh?: string | null
+  vocab: Array<Record<string, string>>
+  results: SimQuestionResult[]
+}
+
+export interface SimSubmissionSummary {
+  submissionId: number
+  passageId: number
+  passageTitle: string
+  correctCount: number
+  totalQuestions: number
+  elapsedSeconds: number
+  createdAt?: string | null
+}
+
+export interface AdminSimSourceSummary {
+  id: number
+  examLevel: string
+  sectionType: string
+  title: string
+  sourceMeta?: string | null
+  status: string
+  createdAt?: string | null
+}
+
+export interface AdminSimSourceDetail {
+  id: number
+  examLevel: string
+  sectionType: string
+  title: string
+  passageEn: string
+  questionsJson: string
+  sourceMeta?: string | null
+  licenseNote: string
+  officialExplains?: string | null
+  status: string
+}
+
+export interface AdminSimPassageSummary {
+  id: number
+  title: string
+  examLevel: string
+  sectionType: string
+  status: string
+  aiStatus: string
+  wordCount?: number | null
+  vocabCount?: number | null
+  recommendedMinutes?: number | null
+  derivedFromSourceId?: number | null
+}
+
+export interface SimGenerateResult {
+  passageId: number
+  aiStatus: string
+  aiError?: string | null
+  status: string
+  warnings: string[]
+  similarityScore?: number | null
 }

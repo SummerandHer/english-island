@@ -16,9 +16,11 @@
 | 阅读技巧 + 模拟练习 | `/reading`、`/reading/practice/[id]` | `module/reading`（含 `ReadingPassageService`） |
 | 翻译技巧 + AI 批改 | `/translation`、`/translation/practice/[id]` | `module/translation` |
 | 每日词汇 | `/vocabulary` | `module/vocabulary` |
+| **日报岛** | `/daily`、`/daily/:id` | `module/daily`（见 [08-日报岛规划.md](./08-日报岛规划.md)） |
+| **仿真题岛** | `/islands/exam`（短篇/长篇/练习）；旧路径 `/sim-exam` 重定向 | `module/simexam`（见 [09](./09-仿真题岛规划.md)/[10](./10-v1.5仿真题岛P0开发任务.md)）；P0+P0.5 已落地 |
 | 双语视频精听 | `/video` | `module/video` |
 | 社区 Feed | `/feed` | `module/post` |
-| 管理后台（视频入库） | `/admin/**` | `module/video/admin` |
+| 管理后台（视频入库） | `/admin/**` | `module/video/admin`、`module/admin`（含日报） |
 
 **产品边界（硬约束）**：只做英语四六级；Web + 平板响应式；MVP 不爬真题、不转存第三方视频；社区仅文字+图；VIP 字段已预留支付二期。
 
@@ -92,11 +94,14 @@ module/
   post/          社区 Feed + 图片上传
   reading/       阅读章节 + 模拟篇章/判分（ReadingPassageService）
   vocabulary/    每日 20 词、查词、生词本、复习队列
+  daily/         日报岛精读、打卡、标注、AI 解析（见 08）
+  simexam/       仿真题岛：底稿、仿写生成、短篇练习/判分（见 09/10）
   translation/     章节 + 题目 + TranslationGradingService（DeepSeek 批改，未配置 API 时 fallback）
   video/         用户端视频列表/详情/收藏
   video/admin/   Admin 视频流水线（parse → publish → 句轴编辑）
   video/asr/     WhisperAsrService
   video/ai/      SentenceZhDraftService
+  admin/         AdminContentController（翻译/阅读/日报录题）
 ```
 
 **MyBatis-Plus**：全部 `*Mapper extends BaseMapper<T>`，无 XML；`@MapperScan("com.island.module.**.mapper")`；`IslandMetaObjectHandler` 自动填 `createdAt/updatedAt`。
@@ -110,7 +115,7 @@ module/
 | 路径 | 规则 |
 |------|------|
 | `/api/v1/auth/**` | 公开 |
-| `GET /reading/**`, `GET /translation/chapters/**`, `GET /videos/**`, `GET /posts/**`, `GET /files/**` | 公开 |
+| `GET /reading/**`, `GET /translation/chapters/**`, `GET /daily/topics|hub|articles/*`, `GET /videos/**`, `GET /posts/**`, `GET /files/**` | 公开 |
 | `/uploads/**` | 公开（local 静态） |
 | `/api/v1/admin/**` | `ROLE_ADMIN` |
 | 其余 | 需登录 |
@@ -204,7 +209,13 @@ const { request, uploadForm } = useApi()  // composables/useApi.ts
 | V4 | `user.role`；首用户 ADMIN |
 | V7 | 阅读模拟：2 篇章×4 题 |
 | V8 | 词汇字段扩展 + `user_vocab_review` |
-| V9 | 词汇核心种子（约 70 词，可脚本扩至 800） |
+| V9 | 词汇核心种子（约 70 词） |
+| V10 | 翻译题扩至 8 道 |
+| V11 | 词汇 upsert 扩量（~205 词） |
+| V12 | 阅读模拟 +2 篇 |
+| V13–V14 | 词汇 800 + 章节推荐视频 |
+| V15 | 阅读提交历史 `reading_submission` |
+| V16–V19 | 阅读扩篇、词汇 1417、翻译 14 题（v1.3） |
 
 DDL 权威参考：`库表设计.sql`。**禁止** JPA `ddl-auto=update`。
 
@@ -267,10 +278,12 @@ cd frontend && npm install && npm run dev
 | 模块 | 缺口 | 规划 |
 |------|------|------|
 | 阅读 | ~~仅章节 HTML~~；模拟题 API + 练习页 + V7 种子 | P0-1 已完成 |
-| 词汇 | V8 表扩展 + 70 词种子 + 每日 20 词 API/页；扩至 800 词见 `import_vocabulary.py` | Phase 2.5 基础已完成 |
-| 翻译 | 8 道模拟题（V10）、练习/历史/15 分制 | ✅ |
+| 词汇 | 每日 20 词 + 生词本 + 打卡；**1417 词**（V17 upsert） | ✅ v1.3 |
+| Admin 内容 | 翻译/阅读 CRUD `/admin/content/**` | ✅ v1.0 |
+| 阅读进度 | `POST .../chapters/{slug}/progress` | ✅ v1.0 |
+| 翻译 | **14 道**模拟题（V10+V18）、练习/历史/15 分制 | ✅ |
 | 备考导航 | `/exam-guide` | ✅ |
-| 词汇 800 | V9 约 70 词 | v1.0 / 脚本扩量 |
+| 词汇 1417 | V17 `import_vocabulary.py` | ✅ v1.3 |
 | 双语 | VIP 视频逻辑不一致；Embed 无法真同步；新视频走 OSS | P0-6 + 运营上传 |
 
 ### 13.2 技术债务
@@ -294,6 +307,7 @@ cd frontend && npm install && npm run dev
 - ❌ 偏离 [03-双语模块UI规范.md](./03-双语模块UI规范.md) 布局（除非用户明确要求）
 - ❌ 未经确认擅自做 P2 词汇本/支付（见 [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)）
 - ❌ MVP 范围外大功能（见 [项目规划.md](../项目规划.md) 第二期列表）
+- ❌ 仿真题岛：对用户露出真题底稿；第三方教辅作底稿；AI 失败时用手工改写冒充仿真卷发布；P0 提交前开放点词/全文译（见 [09](./09-仿真题岛规划.md)/[10](./10-v1.5仿真题岛P0开发任务.md)）
 
 ---
 
@@ -319,13 +333,16 @@ cd frontend && npm install && npm run dev
 | 版本 | 范围 | 状态 |
 |------|------|------|
 | **v0.3** | 阅读模拟、词汇 v0、翻译闭环 | ✅ |
-| **v0.4** | 8 翻译题、备考导航、VIP 视频、今日任务 | 🟡 核心已完成；词汇 800 待做 |
-| **v1.0** | Admin、支付、进度、OSS 视频库 | ⏳ **下一开发目标** |
-| **v1.0** | P1 Admin/进度/限时、支付、OSS 视频库 | 📋 见 [06-迭代路线图.md](./06-迭代路线图.md) §4 |
+| **v0.4** | 8 翻译题、备考导航、VIP 视频、今日任务 | ✅ |
+| **v1.0 运营向 A** | Admin 录题、阅读进度、生词本、V11–V14 | ✅ |
+| **v1.2 备考闭环** | 阅读历史、点词生词、词汇 Tab、移动导航、P2 汇总/限时/缓存 | ✅；见 [07](./07-v1.2备考闭环P0开发任务.md) |
+| **v1.4 日报岛 P0** | 周一/三/五精读打卡、标注、Admin AI 解析 | 🚧 **当前主线**；见 [08-日报岛规划.md](./08-日报岛规划.md) |
+| **v1.5 仿真题岛** | 真题底稿→高仿长短篇阅读、先考后学、考点解析 | 🚧 P0+P0.5 已编码（V22–V23）；见 [10](./10-v1.5仿真题岛P0开发任务.md) |
+| **v1.1 变现向** | 支付、VIP 订单 | 📋 未选，暂缓 |
 
 **产品决策（已确认）**：词汇 **1B**；真题 **2A**；上线 **3A**；禁止 RACE 商用入库；新视频 **OSS**。
 
-动功能代码前：**必须先读** [06-迭代路线图.md](./06-迭代路线图.md)；阅读/翻译细则见 [04](./04-阅读翻译Phase2规划.md)；数据源见 [05](./05-内容与数据源规划.md)。
+动功能代码前：**必须先读** [06-迭代路线图.md](./06-迭代路线图.md)；日报岛读 [08-日报岛规划.md](./08-日报岛规划.md)；仿真题岛读 [09](./09-仿真题岛规划.md)+[10](./10-v1.5仿真题岛P0开发任务.md)；v1.2 任务读 [07](./07-v1.2备考闭环P0开发任务.md)；阅读/翻译细则见 [04](./04-阅读翻译Phase2规划.md)；数据源见 [05](./05-内容与数据源规划.md)。
 
 ---
 
@@ -334,12 +351,12 @@ cd frontend && npm install && npm run dev
 1. **本文件**（全局架构）
 2. [00-总览.md](./00-总览.md) → 按任务读 01 / 02 / 03
 3. **做阅读/翻译功能** → [04-阅读翻译Phase2规划.md](./04-阅读翻译Phase2规划.md)
-4. **排期与待办** → [06-迭代路线图.md](./06-迭代路线图.md)（**首选**）
+4. **排期与待办** → [06-迭代路线图.md](./06-迭代路线图.md)（**首选**）；日报岛 → [08](./08-日报岛规划.md)；仿真题岛 → [09](./09-仿真题岛规划.md)+[10](./10-v1.5仿真题岛P0开发任务.md)；v1.2 → [07](./07-v1.2备考闭环P0开发任务.md)
 5. **词汇/内容/合规** → [05-内容与数据源规划.md](./05-内容与数据源规划.md)
-6. 动数据库前读 `库表设计.sql` 或 `backend/.../db/migration/`（当前 **V9**）
+6. 动数据库前读 `库表设计.sql` 或 `backend/.../db/migration/`（当前 **V20**）
 7. 动双语 UI 前打开 `双语页面视频的展示参考模版.png`
 8. 不确定产品边界时读 [项目规划.md](../项目规划.md)
 
 ---
 
-*最后同步：Flyway V9；阅读模拟 + 词汇 API 已上线；路线图见 06；翻译种子 8 题与备考导航为 v0.4 首项。*
+*最后同步：Flyway V23（仿真题岛长篇匹配）；日报岛见 08；仿真题见 09/10；路线图见 06。*

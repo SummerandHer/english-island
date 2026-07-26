@@ -12,4 +12,8 @@ public class AddUserVocabularyRequest {
 	private Long vocabularyId;
 
 	private String note;
+
+	private String sourceType;
+
+	private Long sourceId;
 }

@@ -2,8 +2,8 @@
   <div>
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">双语视频</h1>
-        <p class="mt-1 text-sm text-gray-500">精选 Embed 视频，句级双语精听</p>
+        <h1 class="text-xl font-bold text-gray-800">双语岛</h1>
+        <p class="mt-1 text-sm text-gray-500">逐句同步精听，提升听力与口语</p>
       </div>
       <p v-if="total > 0" class="text-sm text-gray-400">共 {{ total }} 个视频</p>
     </div>

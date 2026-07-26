@@ -60,6 +60,20 @@ public class VideoService {
 		return new PageResult<>(items, pageObj.getTotal(), safePage, safeSize);
 	}
 
+	/** 章节推荐位：仅返回已发布视频摘要，不存在则 null。 */
+	public VideoSummary findSummary(Long videoId, Long userId) {
+		if (videoId == null) {
+			return null;
+		}
+		Video video = videoMapper.selectById(videoId);
+		if (video == null || video.getStatus() != 1) {
+			return null;
+		}
+		int sentenceCount = loadSentenceCounts(List.of(videoId)).getOrDefault(videoId, 0);
+		boolean favorited = isFavorited(userId, videoId);
+		return VideoSummary.from(video, sentenceCount, favorited);
+	}
+
 	public VideoDetail getVideo(Long id, IslandUserDetails userDetails) {
 		Video video = videoMapper.selectById(id);
 		if (video == null || video.getStatus() != 1) {

@@ -1,6 +1,7 @@
 <template>
   <div>
     <h1 class="mb-4 text-xl font-bold">翻译技巧</h1>
+
     <div class="mb-8 space-y-3">
       <NuxtLink
         v-for="c in chapters"
@@ -15,67 +16,65 @@
         <p class="text-sm text-gray-500">{{ c.summary }}</p>
       </NuxtLink>
     </div>
-    <section class="island-card p-6">
-      <h2 class="mb-4 font-bold">模拟练习 · AI 批改</h2>
-      <div v-if="question" class="space-y-4">
-        <p class="rounded-lg bg-green-50 p-4 text-gray-800">{{ question.promptZh }}</p>
-        <NInput v-model:value="answer" type="textarea" :rows="4" placeholder="在此输入英文译文..." />
-        <NButton type="primary" :loading="grading" :disabled="!auth.isLoggedIn" @click="submit">
-          {{ auth.isLoggedIn ? '提交批改' : '请先登录' }}
-        </NButton>
-        <div v-if="result" class="rounded-lg border border-green-100 bg-white p-4">
-          <p class="mb-2 text-lg font-semibold text-[var(--island-primary)]">得分：{{ result.score }}</p>
-          <p class="text-gray-700">{{ result.overallComment }}</p>
-          <ul v-if="result.errors?.length" class="mt-3 space-y-2 text-sm">
-            <li v-for="(err, i) in result.errors" :key="i" class="rounded bg-gray-50 p-2">
-              <strong>{{ err.span }}</strong> → {{ err.suggestion }}
-              <span class="text-gray-500">（{{ err.reason }}）</span>
-            </li>
-          </ul>
-        </div>
+
+    <section class="island-card mb-8 p-6">
+      <h2 class="mb-4 font-bold">模拟练习</h2>
+      <p v-if="questionsLoading" class="text-sm text-gray-500">加载题目中…</p>
+      <p v-else-if="!auth.isLoggedIn" class="mb-3 text-sm text-gray-500">
+        可浏览题目列表；
+        <NuxtLink to="/login" class="text-[var(--island-primary)] hover:underline">登录</NuxtLink>
+        后开始 AI 批改。
+      </p>
+      <p v-else-if="!questions.length" class="text-sm text-gray-500">暂无练习题。</p>
+      <div v-else class="space-y-3">
+        <NuxtLink
+          v-for="q in questions"
+          :key="q.id"
+          :to="`/translation/practice/${q.id}`"
+          class="block rounded-lg border border-gray-100 p-4 transition hover:border-green-200 hover:shadow-sm"
+        >
+          <div class="mb-2 flex flex-wrap items-center gap-2">
+            <NTag size="small" type="info">{{ questionDirectionLabel(q.direction) }}</NTag>
+            <NTag v-if="q.mock" size="small">模拟题</NTag>
+            <NTag v-if="q.vip" type="warning" size="small">VIP</NTag>
+          </div>
+          <p class="line-clamp-2 text-sm text-gray-700">{{ questionPromptPreview(q) }}</p>
+          <p class="mt-2 text-xs text-[var(--island-primary)]">开始练习 →</p>
+        </NuxtLink>
       </div>
     </section>
+
+    <TranslationHistoryList />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { TranslationQuestionSummary } from '~/types/api'
+import { questionDirectionLabel, questionPromptPreview } from '~/utils/translationQuestion'
+
 interface Chapter { id: number; title: string; slug: string; summary?: string; vip: boolean }
-interface Question { id: number; promptZh?: string }
-interface GradingResult {
-  submissionId: number
-  score: number
-  overallComment: string
-  errors: { span: string; suggestion: string; reason: string }[]
-  referenceHint: string
-}
 
 const auth = useAuthStore()
 const { request } = useApi()
+const message = useAppMessage()
 const chapters = ref<Chapter[]>([])
-const question = ref<Question | null>(null)
-const answer = ref('')
-const grading = ref(false)
-const result = ref<GradingResult | null>(null)
+const questions = ref<TranslationQuestionSummary[]>([])
+const questionsLoading = ref(false)
 
 onMounted(async () => {
   auth.hydrate()
   chapters.value = await request<Chapter[]>('/api/v1/translation/chapters')
-  const qs = await request<Question[]>('/api/v1/translation/questions')
-  question.value = qs[0] || null
+  await loadQuestions()
 })
 
-async function submit() {
-  if (!question.value) return
-  grading.value = true
+async function loadQuestions() {
+  questionsLoading.value = true
   try {
-    result.value = await request<GradingResult>('/api/v1/translation/submissions', {
-      method: 'POST',
-      body: { questionId: question.value.id, userAnswer: answer.value }
-    })
+    questions.value = await request<TranslationQuestionSummary[]>('/api/v1/translation/questions')
   } catch (e: unknown) {
-    alert(e instanceof Error ? e.message : '批改失败')
+    message.error(e instanceof Error ? e.message : '加载题目失败')
   } finally {
-    grading.value = false
+    questionsLoading.value = false
   }
 }
 </script>

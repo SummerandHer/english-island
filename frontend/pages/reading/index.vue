@@ -1,6 +1,11 @@
 <template>
   <div>
     <h1 class="mb-4 text-xl font-bold">阅读技巧</h1>
+    <p class="mb-4 text-sm text-gray-500">
+      刷题请优先前往
+      <NuxtLink to="/islands/exam" class="text-[var(--island-primary)]">仿真题岛</NuxtLink>
+      （考点级高仿练习）；本页保留技巧章节与历史轻模拟。
+    </p>
     <div class="space-y-3">
       <NuxtLink
         v-for="c in chapters"
@@ -14,6 +19,10 @@
         </div>
         <NTag v-if="c.vip" type="warning" size="small">VIP</NTag>
       </NuxtLink>
+    </div>
+
+    <div class="mt-8">
+      <ReadingHistoryList />
     </div>
   </div>
 </template>

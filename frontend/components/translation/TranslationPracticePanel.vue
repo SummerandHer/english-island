@@ -8,14 +8,24 @@
 
     <p class="rounded-lg bg-green-50 p-4 text-gray-800">{{ questionPromptText(question) }}</p>
 
+    <NAlert v-if="timeExpired" type="warning" title="时间到">
+      限时练习已结束，请尽快提交译文进行批改（不会自动提交）。
+    </NAlert>
+
     <NInput
       v-model:value="answer"
       type="textarea"
       :rows="6"
+      :disabled="timeExpired || !!result"
       :placeholder="questionAnswerPlaceholder(question.direction)"
     />
 
-    <NButton type="primary" :loading="grading" :disabled="!auth.isLoggedIn" @click="submit">
+    <NButton
+      type="primary"
+      :loading="grading"
+      :disabled="!auth.isLoggedIn || !answer.trim()"
+      @click="submit"
+    >
       {{ auth.isLoggedIn ? '提交批改' : '请先登录' }}
     </NButton>
 
@@ -80,6 +90,8 @@ import {
 
 const props = defineProps<{
   question: TranslationQuestionDetail
+  timedMode?: boolean
+  timeExpired?: boolean
 }>()
 
 const emit = defineEmits<{

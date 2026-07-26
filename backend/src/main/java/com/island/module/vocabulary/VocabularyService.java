@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.island.common.BusinessException;
 import com.island.module.vocabulary.dto.AddUserVocabularyRequest;
 import com.island.module.vocabulary.dto.VocabReviewRequest;
+import com.island.module.vocabulary.dto.NotebookReviewBatchRequest;
+import com.island.module.vocabulary.dto.VocabSettingsRequest;
+import com.island.module.vocabulary.mapper.UserVocabSettingsMapper;
+import com.island.module.vocabulary.mapper.VocabDailyCheckinMapper;
 import com.island.module.vocabulary.mapper.UserVocabReviewMapper;
 import com.island.module.vocabulary.mapper.UserVocabularyMapper;
 import com.island.module.vocabulary.mapper.VocabularyMapper;
@@ -14,7 +18,10 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -32,10 +39,95 @@ public class VocabularyService {
 	private final VocabularyMapper vocabularyMapper;
 	private final UserVocabReviewMapper reviewMapper;
 	private final UserVocabularyMapper userVocabularyMapper;
+	private final UserVocabSettingsMapper settingsMapper;
+	private final VocabDailyCheckinMapper checkinMapper;
 	private final ObjectMapper objectMapper;
 
+	public VocabSettingsView getSettings(Long userId) {
+		UserVocabSettings settings = settingsMapper.selectById(userId);
+		return new VocabSettingsView(settings != null ? settings.getExamLevel() : "cet4");
+	}
+
+	@Transactional
+	public VocabSettingsView updateSettings(Long userId, VocabSettingsRequest request) {
+		String level = request.getExamLevel().trim().toLowerCase();
+		if (!level.equals("cet4") && !level.equals("cet6")) {
+			throw new BusinessException(400, "词书级别须为 cet4 或 cet6");
+		}
+		UserVocabSettings settings = settingsMapper.selectById(userId);
+		if (settings == null) {
+			settings = new UserVocabSettings();
+			settings.setUserId(userId);
+			settings.setExamLevel(level);
+			settingsMapper.insert(settings);
+		} else {
+			settings.setExamLevel(level);
+			settingsMapper.updateById(settings);
+		}
+		return new VocabSettingsView(level);
+	}
+
+	public CheckinStats getCheckinStats(Long userId) {
+		LocalDate today = LocalDate.now();
+		List<VocabDailyCheckin> rows = checkinMapper.selectList(new LambdaQueryWrapper<VocabDailyCheckin>()
+				.eq(VocabDailyCheckin::getUserId, userId)
+				.ge(VocabDailyCheckin::getCheckDate, today.minusDays(60))
+				.orderByDesc(VocabDailyCheckin::getCheckDate));
+		Set<LocalDate> checkedDates = rows.stream()
+				.map(VocabDailyCheckin::getCheckDate)
+				.collect(Collectors.toSet());
+
+		int streak = 0;
+		LocalDate cursor = checkedDates.contains(today) ? today : today.minusDays(1);
+		while (checkedDates.contains(cursor)) {
+			streak++;
+			cursor = cursor.minusDays(1);
+		}
+
+		List<WeekDayCheckin> week = new ArrayList<>();
+		for (int i = 6; i >= 0; i--) {
+			LocalDate d = today.minusDays(i);
+			week.add(new WeekDayCheckin(d.toString(), checkedDates.contains(d)));
+		}
+		return new CheckinStats(streak, week);
+	}
+
+	@Transactional
+	public int addNotebookToReview(Long userId, NotebookReviewBatchRequest request) {
+		LocalDateTime now = LocalDateTime.now();
+		int added = 0;
+		for (Long vocabularyId : request.getVocabularyIds()) {
+			if (vocabularyId == null) {
+				continue;
+			}
+			Vocabulary vocab = vocabularyMapper.selectById(vocabularyId);
+			if (vocab == null) {
+				continue;
+			}
+			UserVocabReview review = reviewMapper.selectOne(new LambdaQueryWrapper<UserVocabReview>()
+					.eq(UserVocabReview::getUserId, userId)
+					.eq(UserVocabReview::getVocabularyId, vocabularyId));
+			if (review == null) {
+				review = new UserVocabReview();
+				review.setUserId(userId);
+				review.setVocabularyId(vocabularyId);
+				review.setFamiliarity(0);
+				review.setNextReviewAt(now);
+				review.setLastReviewAt(null);
+				reviewMapper.insert(review);
+				added++;
+			} else if (review.getNextReviewAt().isAfter(now)) {
+				review.setNextReviewAt(now);
+				reviewMapper.updateById(review);
+				added++;
+			}
+		}
+		return added;
+	}
+
 	public TodayPlan getTodayPlan(Long userId) {
-		ensureReviewQueue(userId);
+		String examLevel = resolveExamLevel(userId);
+		ensureReviewQueue(userId, examLevel);
 		LocalDateTime now = LocalDateTime.now();
 		List<UserVocabReview> due = reviewMapper.selectList(new LambdaQueryWrapper<UserVocabReview>()
 				.eq(UserVocabReview::getUserId, userId)
@@ -44,7 +136,7 @@ public class VocabularyService {
 				.last("LIMIT " + DAILY_LIMIT));
 
 		if (due.isEmpty()) {
-			return new TodayPlan(0, DAILY_LIMIT, List.of());
+			return new TodayPlan(0, DAILY_LIMIT, examLevel, List.of());
 		}
 
 		List<Long> vocabIds = due.stream().map(UserVocabReview::getVocabularyId).toList();
@@ -66,7 +158,7 @@ public class VocabularyService {
 				.eq(UserVocabReview::getUserId, userId)
 				.le(UserVocabReview::getNextReviewAt, now));
 
-		return new TodayPlan(items.size(), DAILY_LIMIT, items);
+		return new TodayPlan(items.size(), DAILY_LIMIT, examLevel, items);
 	}
 
 	public VocabListItem getDetail(Long id) {
@@ -75,6 +167,47 @@ public class VocabularyService {
 			throw new BusinessException(404, "词汇不存在");
 		}
 		return toListItem(v);
+	}
+
+	public VocabDetail lookupByWord(String word) {
+		if (word == null || word.isBlank()) {
+			throw new BusinessException(400, "单词不能为空");
+		}
+		String normalized = word.trim().toLowerCase().replaceAll("[^a-z'-]", "");
+		if (normalized.isEmpty()) {
+			throw new BusinessException(400, "无效的单词");
+		}
+		Vocabulary v = vocabularyMapper.selectOne(new LambdaQueryWrapper<Vocabulary>()
+				.apply("LOWER(word) = {0}", normalized)
+				.last("LIMIT 1"));
+		if (v == null) {
+			throw new BusinessException(404, "词库中未找到该词");
+		}
+		return toDetail(v);
+	}
+
+	public VocabStats getStats(Long userId) {
+		long reviewTotal = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
+				.eq(UserVocabReview::getUserId, userId));
+		long masteredCount = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
+				.eq(UserVocabReview::getUserId, userId)
+				.ge(UserVocabReview::getFamiliarity, 3));
+		long notebookCount = userVocabularyMapper.selectCount(new LambdaQueryWrapper<UserVocabulary>()
+				.eq(UserVocabulary::getUserId, userId));
+		TodayPlan today = getTodayPlan(userId);
+		LocalDateTime startOfDay = LocalDateTime.now().toLocalDate().atStartOfDay();
+		long todayDone = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
+				.eq(UserVocabReview::getUserId, userId)
+				.ge(UserVocabReview::getLastReviewAt, startOfDay));
+		return new VocabStats(
+				(int) masteredCount,
+				(int) reviewTotal,
+				(int) notebookCount,
+				(int) todayDone,
+				DAILY_LIMIT,
+				today.dueCount(),
+				getCheckinStats(userId).streakDays(),
+				resolveExamLevel(userId));
 	}
 
 	public VocabDetail getFullDetail(Long id) {
@@ -148,7 +281,10 @@ public class VocabularyService {
 			reviewMapper.updateById(review);
 		}
 
-		return new ReviewResult(request.getVocabularyId(), request.getResult(), familiarity, next);
+		maybeRecordCheckin(userId);
+
+		long daysUntil = Math.max(0, ChronoUnit.DAYS.between(now.toLocalDate(), next.toLocalDate()));
+		return new ReviewResult(request.getVocabularyId(), request.getResult(), familiarity, next, (int) daysUntil);
 	}
 
 	@Transactional
@@ -163,6 +299,10 @@ public class VocabularyService {
 		if (existing != null) {
 			if (request.getNote() != null && !request.getNote().isBlank()) {
 				existing.setNote(request.getNote().trim());
+			}
+			if (request.getSourceType() != null && !request.getSourceType().isBlank()) {
+				existing.setSourceType(request.getSourceType().trim());
+				existing.setSourceId(request.getSourceId());
 				userVocabularyMapper.updateById(existing);
 			}
 			return;
@@ -170,7 +310,9 @@ public class VocabularyService {
 		UserVocabulary uv = new UserVocabulary();
 		uv.setUserId(userId);
 		uv.setVocabularyId(request.getVocabularyId());
-		uv.setSourceType("manual");
+		String sourceType = request.getSourceType();
+		uv.setSourceType(sourceType != null && !sourceType.isBlank() ? sourceType.trim() : "manual");
+		uv.setSourceId(request.getSourceId());
 		uv.setNote(request.getNote());
 		try {
 			userVocabularyMapper.insert(uv);
@@ -179,7 +321,7 @@ public class VocabularyService {
 		}
 	}
 
-	public List<VocabListItem> listNotebook(Long userId) {
+	public List<NotebookItem> listNotebook(Long userId) {
 		List<UserVocabulary> rows = userVocabularyMapper.selectList(new LambdaQueryWrapper<UserVocabulary>()
 				.eq(UserVocabulary::getUserId, userId)
 				.orderByDesc(UserVocabulary::getCreatedAt)
@@ -191,13 +333,18 @@ public class VocabularyService {
 		Map<Long, Vocabulary> map = vocabularyMapper.selectBatchIds(ids).stream()
 				.collect(Collectors.toMap(Vocabulary::getId, Function.identity()));
 		return rows.stream()
-				.map(uv -> map.get(uv.getVocabularyId()))
-				.filter(v -> v != null)
-				.map(this::toListItem)
+				.map(uv -> {
+					Vocabulary v = map.get(uv.getVocabularyId());
+					if (v == null) {
+						return null;
+					}
+					return new NotebookItem(toListItem(v), uv.getSourceType(), uv.getSourceId(), uv.getNote());
+				})
+				.filter(item -> item != null)
 				.toList();
 	}
 
-	private void ensureReviewQueue(Long userId) {
+	private void ensureReviewQueue(Long userId, String examLevel) {
 		long total = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
 				.eq(UserVocabReview::getUserId, userId));
 		if (total >= DAILY_LIMIT) {
@@ -212,7 +359,7 @@ public class VocabularyService {
 
 		int need = DAILY_LIMIT - (int) total;
 		List<Vocabulary> candidates = vocabularyMapper.selectList(new LambdaQueryWrapper<Vocabulary>()
-				.eq(Vocabulary::getDifficulty, "cet4")
+				.eq(Vocabulary::getDifficulty, examLevel)
 				.orderByAsc(Vocabulary::getFreqRank)
 				.last("LIMIT " + (need + existing.size() + 50)));
 
@@ -234,6 +381,45 @@ public class VocabularyService {
 			if (added >= need) {
 				break;
 			}
+		}
+	}
+
+	private String resolveExamLevel(Long userId) {
+		UserVocabSettings settings = settingsMapper.selectById(userId);
+		if (settings == null || settings.getExamLevel() == null) {
+			return "cet4";
+		}
+		return settings.getExamLevel();
+	}
+
+	private void maybeRecordCheckin(Long userId) {
+		LocalDateTime now = LocalDateTime.now();
+		long due = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
+				.eq(UserVocabReview::getUserId, userId)
+				.le(UserVocabReview::getNextReviewAt, now));
+		if (due > 0) {
+			return;
+		}
+		LocalDate today = LocalDate.now();
+		LocalDateTime startOfDay = today.atStartOfDay();
+		long reviewedToday = reviewMapper.selectCount(new LambdaQueryWrapper<UserVocabReview>()
+				.eq(UserVocabReview::getUserId, userId)
+				.ge(UserVocabReview::getLastReviewAt, startOfDay));
+		if (reviewedToday < 1) {
+			return;
+		}
+		VocabDailyCheckin checkin = checkinMapper.selectOne(new LambdaQueryWrapper<VocabDailyCheckin>()
+				.eq(VocabDailyCheckin::getUserId, userId)
+				.eq(VocabDailyCheckin::getCheckDate, today));
+		if (checkin == null) {
+			checkin = new VocabDailyCheckin();
+			checkin.setUserId(userId);
+			checkin.setCheckDate(today);
+			checkin.setReviewedCount((int) reviewedToday);
+			checkinMapper.insert(checkin);
+		} else if (checkin.getReviewedCount() < reviewedToday) {
+			checkin.setReviewedCount((int) reviewedToday);
+			checkinMapper.updateById(checkin);
 		}
 	}
 
@@ -310,9 +496,41 @@ public class VocabularyService {
 	public record TodayItem(VocabListItem vocab, int familiarity) {
 	}
 
-	public record TodayPlan(int dueCount, int dailyLimit, List<TodayItem> items) {
+	public record TodayPlan(int dueCount, int dailyLimit, String examLevel, List<TodayItem> items) {
 	}
 
-	public record ReviewResult(Long vocabularyId, String result, int familiarity, LocalDateTime nextReviewAt) {
+	public record VocabSettingsView(String examLevel) {
+	}
+
+	public record WeekDayCheckin(String date, boolean checked) {
+	}
+
+	public record CheckinStats(int streakDays, List<WeekDayCheckin> week) {
+	}
+
+	public record VocabStats(
+			int masteredCount,
+			int reviewTotal,
+			int notebookCount,
+			int todayDone,
+			int dailyLimit,
+			int todayRemaining,
+			int streakDays,
+			String examLevel) {
+	}
+
+	public record NotebookItem(
+			VocabListItem vocab,
+			String sourceType,
+			Long sourceId,
+			String note) {
+	}
+
+	public record ReviewResult(
+			Long vocabularyId,
+			String result,
+			int familiarity,
+			LocalDateTime nextReviewAt,
+			int daysUntilNext) {
 	}
 }

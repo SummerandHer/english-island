@@ -47,13 +47,23 @@ public class DeepSeekChatService {
 	}
 
 	public ChatResult chat(String userPrompt, double temperature) {
+		return chat(null, userPrompt, temperature);
+	}
+
+	public ChatResult chat(String systemPrompt, String userPrompt, double temperature) {
 		if (!isConfigured()) {
 			throw new LlmException("AI 未配置：请设置 island.ai.enabled=true 并填写 api-key");
 		}
 
+		List<Map<String, String>> messages = new java.util.ArrayList<>();
+		if (systemPrompt != null && !systemPrompt.isBlank()) {
+			messages.add(Map.of("role", "system", "content", systemPrompt));
+		}
+		messages.add(Map.of("role", "user", "content", userPrompt));
+
 		Map<String, Object> body = new LinkedHashMap<>();
 		body.put("model", getModel());
-		body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
+		body.put("messages", messages);
 		body.put("temperature", temperature);
 
 		HttpHeaders headers = new HttpHeaders();

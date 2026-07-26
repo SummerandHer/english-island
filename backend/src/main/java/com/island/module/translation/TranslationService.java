@@ -2,16 +2,21 @@ package com.island.module.translation;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.island.common.BusinessException;
+import com.island.module.content.ChapterCacheService;
 import com.island.module.translation.dto.SubmitTranslationRequest;
 import com.island.module.translation.mapper.TranslationChapterMapper;
 import com.island.module.translation.mapper.TranslationQuestionMapper;
 import com.island.module.translation.mapper.TranslationSubmissionMapper;
+import com.island.module.video.VideoService;
 import com.island.security.IslandUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -25,6 +30,8 @@ public class TranslationService {
 	private final TranslationQuestionMapper questionMapper;
 	private final TranslationSubmissionMapper submissionMapper;
 	private final TranslationGradingService gradingService;
+	private final VideoService videoService;
+	private final ChapterCacheService chapterCache;
 
 	public List<ChapterSummary> listChapters() {
 		return chapterMapper.selectList(new LambdaQueryWrapper<TranslationChapter>()
@@ -36,6 +43,13 @@ public class TranslationService {
 	}
 
 	public ChapterDetail getChapter(String slug, IslandUserDetails userDetails) {
+		var cached = chapterCache.getTranslationChapter(slug);
+		if (cached.isPresent()) {
+			ChapterDetail base = cached.get();
+			checkVip(base.vip() ? 1 : 0, userDetails);
+			return mergeTranslationUserFields(base, userDetails);
+		}
+
 		TranslationChapter chapter = chapterMapper.selectOne(new LambdaQueryWrapper<TranslationChapter>()
 				.eq(TranslationChapter::getSlug, slug)
 				.eq(TranslationChapter::getStatus, 1));
@@ -43,7 +57,17 @@ public class TranslationService {
 			throw new BusinessException(404, "章节不存在");
 		}
 		checkVip(chapter.getIsVip(), userDetails);
-		return ChapterDetail.from(chapter);
+		var recommendedVideo = videoService.findSummary(chapter.getRecommendedVideoId(), null);
+		ChapterDetail base = ChapterDetail.from(chapter, recommendedVideo);
+		chapterCache.putTranslationChapter(slug, base);
+		return mergeTranslationUserFields(base, userDetails);
+	}
+
+	public int countThisWeek(Long userId) {
+		LocalDateTime since = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();
+		return submissionMapper.selectCount(new LambdaQueryWrapper<TranslationSubmission>()
+				.eq(TranslationSubmission::getUserId, userId)
+				.ge(TranslationSubmission::getCreatedAt, since)).intValue();
 	}
 
 	public List<QuestionSummary> listQuestions() {
@@ -166,6 +190,20 @@ public class TranslationService {
 		return text.length() > 60 ? text.substring(0, 60) + "…" : text;
 	}
 
+	private ChapterDetail mergeTranslationUserFields(ChapterDetail base, IslandUserDetails userDetails) {
+		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
+		var recommendedVideo = base.recommendedVideo();
+		if (recommendedVideo != null) {
+			recommendedVideo = videoService.findSummary(recommendedVideo.id(), userId);
+		}
+		if (recommendedVideo == base.recommendedVideo()) {
+			return base;
+		}
+		return new ChapterDetail(
+				base.id(), base.title(), base.slug(), base.summary(), base.contentHtml(),
+				base.vip(), recommendedVideo);
+	}
+
 	private void checkVip(Integer isVip, IslandUserDetails userDetails) {
 		if (isVip != null && isVip == 1) {
 			boolean vip = userDetails != null && userDetails.getUser().isVipActive();
@@ -181,9 +219,17 @@ public class TranslationService {
 		}
 	}
 
-	public record ChapterDetail(Long id, String title, String slug, String summary, String contentHtml, boolean vip) {
-		static ChapterDetail from(TranslationChapter c) {
-			return new ChapterDetail(c.getId(), c.getTitle(), c.getSlug(), c.getSummary(), c.getContentHtml(), c.getIsVip() == 1);
+	public record ChapterDetail(
+			Long id,
+			String title,
+			String slug,
+			String summary,
+			String contentHtml,
+			boolean vip,
+			VideoService.VideoSummary recommendedVideo) {
+		static ChapterDetail from(TranslationChapter c, VideoService.VideoSummary recommendedVideo) {
+			return new ChapterDetail(
+					c.getId(), c.getTitle(), c.getSlug(), c.getSummary(), c.getContentHtml(), c.getIsVip() == 1, recommendedVideo);
 		}
 	}
 

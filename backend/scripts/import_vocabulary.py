@@ -6,7 +6,9 @@
   python import_vocabulary.py --cet4 path/to/CET4.json --cet6 path/to/CET6.json
   python import_vocabulary.py   # 仅使用 scripts/data/cet4_core.json
 
-KyleBing json-simple: https://github.com/KyleBing/english-vocabulary/tree/master/json_original/json-simple
+KyleBing json-simple（无 CET4.json 单文件，用 CET4_1.json / CET6_1.json）:
+  https://github.com/KyleBing/english-vocabulary/tree/master/json_original/json-simple
+  raw: .../json_original/json-simple/CET4_1.json 与 CET6_1.json
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CORE = ROOT / "data" / "cet4_core.json"
-OUT = ROOT.parent / "src" / "main" / "resources" / "db" / "migration" / "V9__seed_vocab_core.sql"
+DEFAULT_OUT = ROOT.parent / "src" / "main" / "resources" / "db" / "migration" / "V9__seed_vocab_core.sql"
 
 SOURCE_NOTE = "开源词库整理+考纲校验，仅供学习"
 
@@ -105,19 +107,28 @@ def merge(cet4: list[dict], cet6: list[dict]) -> list[dict]:
     return out
 
 
-def emit_sql(rows: list[dict]) -> str:
+def emit_sql(rows: list[dict], upsert: bool = False) -> str:
     lines = [
-        "-- 词汇核心种子（import_vocabulary.py 生成，勿手改）",
+        "-- 词汇种子（import_vocabulary.py 生成，勿手改）",
         f"-- 共 {len(rows)} 条",
         "",
     ]
     for r in rows:
         pj = "NULL" if not r.get("phrases_json") else f"'{esc(r['phrases_json'])}'"
-        lines.append(
+        base = (
             "INSERT INTO vocabulary (word, phonetic, part_of_speech, meaning_zh, difficulty, freq_rank, phrases_json, source_note) VALUES "
             f"('{esc(r['word'])}', '{esc(r.get('phonetic') or '')}', '{esc(r.get('part_of_speech') or '')}', "
-            f"'{esc(r['meaning_zh'])}', '{r['exam']}', {r['freq_rank']}, {pj}, '{esc(SOURCE_NOTE)}');"
+            f"'{esc(r['meaning_zh'])}', '{r['exam']}', {r['freq_rank']}, {pj}, '{esc(SOURCE_NOTE)}')"
         )
+        if upsert:
+            lines.append(
+                base
+                + " ON DUPLICATE KEY UPDATE phonetic=VALUES(phonetic), part_of_speech=VALUES(part_of_speech), "
+                "meaning_zh=VALUES(meaning_zh), difficulty=VALUES(difficulty), freq_rank=VALUES(freq_rank), "
+                "phrases_json=VALUES(phrases_json), source_note=VALUES(source_note);"
+            )
+        else:
+            lines.append(base + ";")
     return "\n".join(lines) + "\n"
 
 
@@ -127,7 +138,9 @@ def main() -> None:
     parser.add_argument("--cet6", type=Path, help="KyleBing CET6 json-simple")
     parser.add_argument("--cet4-limit", type=int, default=600)
     parser.add_argument("--cet6-limit", type=int, default=200)
-    parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--upsert", action="store_true", help="生成 ON DUPLICATE KEY UPDATE（用于 V11+ 扩量）")
+    parser.add_argument("--supplement", type=Path, default=ROOT / "data" / "cet4_supplement.json")
     args = parser.parse_args()
 
     cet4_rows: list[dict] = []
@@ -139,6 +152,10 @@ def main() -> None:
         core = load_core(DEFAULT_CORE)
         cet4_rows = [r for r in core if r["exam"] == "cet4"]
         cet6_rows = [r for r in core if r["exam"] == "cet6"]
+        if args.supplement.exists():
+            extra = load_core(args.supplement)
+            cet4_rows.extend([r for r in extra if r["exam"] == "cet4"])
+            cet6_rows.extend([r for r in extra if r["exam"] == "cet6"])
 
     if args.cet6 and args.cet6.exists():
         cet6_rows = load_kylebing(args.cet6, "cet6", args.cet6_limit)
@@ -148,7 +165,7 @@ def main() -> None:
         raise SystemExit("无词汇数据：请提供 --cet4/--cet6 或 scripts/data/cet4_core.json")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(emit_sql(rows), encoding="utf-8")
+    args.out.write_text(emit_sql(rows, upsert=args.upsert), encoding="utf-8")
     print(f"Wrote {len(rows)} words -> {args.out}")
 
 

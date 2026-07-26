@@ -34,7 +34,7 @@
 <script setup lang="ts">
 const features = [
   { icon: '📖', title: '结构化技巧', desc: '阅读翻译章节式学习' },
-  { icon: '🎬', title: '双语精听', desc: '逐句同步，高效练听力' },
+  { icon: '🎬', title: '双语岛', desc: '逐句同步，高效练听力' },
   { icon: '✍️', title: 'AI 翻译批改', desc: '即时反馈，提升表达' }
 ]
 </script>
