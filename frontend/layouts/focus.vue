@@ -4,12 +4,11 @@
   </div>
 </template>
 
+<!-- 日报沉浸模式已改用页面内 Teleport 全屏层；本 layout 保留备用 -->
 <style scoped>
 .focus-shell {
   min-height: 100vh;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(194, 214, 190, 0.45), transparent),
-    var(--island-bg);
+  background: var(--island-bg);
   color: var(--island-text);
 }
 </style>

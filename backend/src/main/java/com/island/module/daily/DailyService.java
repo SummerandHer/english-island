@@ -259,10 +259,13 @@ public class DailyService {
 		out.put("cetVocabJson", r.cetVocabJson());
 		out.put("hardVocabJson", r.hardVocabJson());
 		out.put("structuresJson", r.structuresJson());
+		out.put("contentZh", r.contentZh());
+		out.put("sentencesJson", r.sentencesJson());
 		out.put("aiRawJson", r.aiRawJson());
 		out.put("cetVocab", r.cetVocab());
 		out.put("hardVocab", r.hardVocab());
 		out.put("structures", r.structures());
+		out.put("sentences", r.sentences());
 		return out;
 	}
 
@@ -294,6 +297,8 @@ public class DailyService {
 		a.setCetVocabJson(result.cetVocabJson());
 		a.setHardVocabJson(result.hardVocabJson());
 		a.setStructuresJson(result.structuresJson());
+		a.setContentZh(result.contentZh());
+		a.setSentencesJson(result.sentencesJson());
 		articleMapper.updateById(a);
 		return result;
 	}
@@ -357,6 +362,8 @@ public class DailyService {
 		a.setCetVocabJson(blankToNull(request.getCetVocabJson()));
 		a.setHardVocabJson(blankToNull(request.getHardVocabJson()));
 		a.setStructuresJson(blankToNull(request.getStructuresJson()));
+		a.setContentZh(blankToNull(request.getContentZh()));
+		a.setSentencesJson(blankToNull(request.getSentencesJson()));
 		int wc = request.getWordCount() != null && request.getWordCount() > 0
 				? request.getWordCount()
 				: DailyAiParseService.countWords(request.getContentEn());
@@ -397,6 +404,9 @@ public class DailyService {
 		List<Map<String, Object>> structures = parseList(a.getStructuresJson());
 		if (structures.size() < 3) {
 			throw new BusinessException(400, "句式结构至少 3 条");
+		}
+		if (!StringUtils.hasText(a.getSentencesJson()) || "[]".equals(a.getSentencesJson().trim())) {
+			throw new BusinessException(400, "缺少逐句中译，请先 AI 增强");
 		}
 	}
 
@@ -506,6 +516,7 @@ public class DailyService {
 				DailyTopics.label(a.getTopic()),
 				a.getDifficulty(),
 				a.getContentEn(),
+				a.getContentZh(),
 				a.getCoverUrl(),
 				a.getSummaryZh(),
 				a.getPublishDate(),
@@ -516,6 +527,7 @@ public class DailyService {
 				parseList(a.getCetVocabJson()),
 				parseList(a.getHardVocabJson()),
 				parseList(a.getStructuresJson()),
+				parseList(a.getSentencesJson()),
 				checkedIn,
 				annotations,
 				related
@@ -531,10 +543,10 @@ public class DailyService {
 	private AdminArticleDetail toAdminDetail(DailyArticle a) {
 		return new AdminArticleDetail(
 				a.getId(), a.getTitle(), a.getSlug(), a.getTopic(), a.getDifficulty(),
-				a.getContentEn(), a.getCoverUrl(), a.getCoverAssetId(), a.getSummaryZh(),
+				a.getContentEn(), a.getContentZh(), a.getCoverUrl(), a.getCoverAssetId(), a.getSummaryZh(),
 				a.getPublishDate(), a.getSourceId(), a.getSourcePublishedAt(),
 				a.getSourceAuthor(), a.getSourcePlace(),
-				a.getCetVocabJson(), a.getHardVocabJson(), a.getStructuresJson(),
+				a.getCetVocabJson(), a.getHardVocabJson(), a.getStructuresJson(), a.getSentencesJson(),
 				a.getWordCount(), a.getStatus(),
 				a.getAiStatus(), a.getAiError(), a.getAiVersion()
 		);
@@ -672,6 +684,7 @@ public class DailyService {
 			String topicLabel,
 			String difficulty,
 			String contentEn,
+			String contentZh,
 			String coverUrl,
 			String summaryZh,
 			LocalDate publishDate,
@@ -682,6 +695,7 @@ public class DailyService {
 			List<Map<String, Object>> cetVocab,
 			List<Map<String, Object>> hardVocab,
 			List<Map<String, Object>> structures,
+			List<Map<String, Object>> sentences,
 			boolean checkedIn,
 			List<AnnotationView> annotations,
 			List<ArticleSummary> related
@@ -715,6 +729,7 @@ public class DailyService {
 			String topic,
 			String difficulty,
 			String contentEn,
+			String contentZh,
 			String coverUrl,
 			Long coverAssetId,
 			String summaryZh,
@@ -726,6 +741,7 @@ public class DailyService {
 			String cetVocabJson,
 			String hardVocabJson,
 			String structuresJson,
+			String sentencesJson,
 			Integer wordCount,
 			String status,
 			String aiStatus,

@@ -75,21 +75,14 @@ const router = useRouter()
 const drawerOpen = ref(false)
 
 const navItems = [
-  { label: '学习', to: '/' },
-  { label: '阅读', to: '/reading' },
-  { label: '仿真题', to: '/islands/exam' },
-  { label: '词汇', to: '/vocabulary' },
-  { label: '翻译', to: '/translation' },
-  { label: '双语岛', to: '/video' }
+  { label: '首页', to: '/' },
+  { label: '日报岛', to: '/daily' },
+  { label: '双语岛', to: '/video' },
+  { label: '仿真题岛', to: '/islands/exam' },
+  { label: '我的', to: '/me' }
 ]
 
-const allNavItems = [
-  ...navItems,
-  { label: '备考', to: '/exam-guide' },
-  { label: '社区', to: '/feed' },
-  { label: '我的', to: '/me' },
-  { label: '生词本', to: '/vocabulary?tab=notebook' }
-]
+const allNavItems = [...navItems]
 
 const avatarLetter = computed(() => {
   const name = auth.user?.nickname || '?'

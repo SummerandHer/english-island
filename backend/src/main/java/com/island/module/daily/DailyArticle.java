@@ -30,6 +30,9 @@ public class DailyArticle {
 	@TableField("content_en")
 	private String contentEn;
 
+	@TableField("content_zh")
+	private String contentZh;
+
 	@TableField("cover_url")
 	private String coverUrl;
 
@@ -62,6 +65,9 @@ public class DailyArticle {
 
 	@TableField("structures_json")
 	private String structuresJson;
+
+	@TableField("sentences_json")
+	private String sentencesJson;
 
 	@TableField("word_count")
 	private Integer wordCount;

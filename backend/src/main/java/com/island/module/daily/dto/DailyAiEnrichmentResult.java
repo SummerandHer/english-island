@@ -20,10 +20,13 @@ public record DailyAiEnrichmentResult(
 		String cetVocabJson,
 		String hardVocabJson,
 		String structuresJson,
+		String contentZh,
+		String sentencesJson,
 		String aiRawJson,
 		List<Map<String, Object>> cetVocab,
 		List<Map<String, Object>> hardVocab,
-		List<Map<String, Object>> structures
+		List<Map<String, Object>> structures,
+		List<Map<String, Object>> sentences
 ) {
 	public static final String GATE_OK = "ok";
 	public static final String GATE_NEEDS_REVIEW = "needs_review";

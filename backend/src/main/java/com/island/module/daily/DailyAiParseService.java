@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class DailyAiParseService {
 
-	public static final String AI_VERSION = "daily-enrich-v2";
+	public static final String AI_VERSION = "daily-enrich-v3";
 
 	private static final Set<String> STOP_WORDS = Set.of(
 			"the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for", "with",
@@ -108,10 +108,13 @@ public class DailyAiParseService {
 		out.put("cetVocabJson", r.cetVocabJson());
 		out.put("hardVocabJson", r.hardVocabJson());
 		out.put("structuresJson", r.structuresJson());
+		out.put("contentZh", r.contentZh());
+		out.put("sentencesJson", r.sentencesJson());
 		out.put("aiRawJson", r.aiRawJson());
 		out.put("cetVocab", r.cetVocab());
 		out.put("hardVocab", r.hardVocab());
 		out.put("structures", r.structures());
+		out.put("sentences", r.sentences());
 		return out;
 	}
 
@@ -273,9 +276,22 @@ public class DailyAiParseService {
 					null, null, null, null,
 					wordCount,
 					null, null, null, null,
+					null, null,
 					aiRaw,
-					List.of(), List.of(), List.of()
+					List.of(), List.of(), List.of(), List.of()
 			);
+		}
+
+		List<Map<String, Object>> sentences = List.of();
+		String sentencesJson = "[]";
+		String contentZh = null;
+		try {
+			sentences = alignAndTranslateSentences(content, warnings);
+			sentencesJson = objectMapper.writeValueAsString(sentences);
+			contentZh = buildContentZh(sentences);
+		} catch (Exception e) {
+			log.warn("Daily sentence translate failed: {}", e.getMessage());
+			warnings.add("逐句中译未生成：" + e.getMessage() + "（词汇增强仍可用，可稍后重试）");
 		}
 
 		String gate = warnings.isEmpty()
@@ -296,10 +312,13 @@ public class DailyAiParseService {
 				cetJson,
 				hardJson,
 				structJson,
+				contentZh,
+				sentencesJson,
 				aiRaw,
 				cetVocab,
 				hardVocab,
-				structures
+				structures,
+				sentences
 		);
 	}
 
@@ -534,9 +553,150 @@ public class DailyAiParseService {
 				null, null, null, null,
 				wordCount,
 				null, null, null, null,
+				null, null,
 				null,
-				List.of(), List.of(), List.of()
+				List.of(), List.of(), List.of(), List.of()
 		);
+	}
+
+	/**
+	 * 服务端切句 + AI 批量中译，再回填 start/end offset。
+	 */
+	List<Map<String, Object>> alignAndTranslateSentences(String content, List<String> warnings) throws Exception {
+		List<int[]> spans = splitSentenceSpans(content);
+		if (spans.isEmpty()) {
+			warnings.add("未能切分出句子，跳过中译");
+			return List.of();
+		}
+		List<String> ens = new ArrayList<>(spans.size());
+		for (int[] sp : spans) {
+			ens.add(content.substring(sp[0], sp[1]));
+		}
+		List<String> zhs = translateSentenceBatches(ens);
+		if (zhs.size() != ens.size()) {
+			warnings.add("中译句数与英文句数不一致（" + zhs.size() + "/" + ens.size() + "），已尽量对齐");
+		}
+		List<Map<String, Object>> out = new ArrayList<>();
+		int n = Math.min(ens.size(), zhs.size());
+		for (int i = 0; i < n; i++) {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("en", ens.get(i));
+			row.put("zh", zhs.get(i) == null ? "" : zhs.get(i).trim());
+			row.put("startOffset", spans.get(i)[0]);
+			row.put("endOffset", spans.get(i)[1]);
+			out.add(row);
+		}
+		return out;
+	}
+
+	static List<int[]> splitSentenceSpans(String content) {
+		List<int[]> spans = new ArrayList<>();
+		if (!StringUtils.hasText(content)) {
+			return spans;
+		}
+		int n = content.length();
+		int i = 0;
+		while (i < n) {
+			while (i < n && Character.isWhitespace(content.charAt(i))) {
+				i++;
+			}
+			if (i >= n) {
+				break;
+			}
+			int start = i;
+			while (i < n) {
+				char c = content.charAt(i);
+				if (c == '.' || c == '!' || c == '?') {
+					i++;
+					while (i < n && (content.charAt(i) == '"' || content.charAt(i) == '\'' || content.charAt(i) == ')')) {
+						i++;
+					}
+					break;
+				}
+				if (c == '\n') {
+					int j = i;
+					while (j < n && content.charAt(j) == '\n') {
+						j++;
+					}
+					if (j - i >= 2) {
+						break;
+					}
+				}
+				i++;
+			}
+			int end = i;
+			while (end > start && Character.isWhitespace(content.charAt(end - 1))) {
+				end--;
+			}
+			if (end > start) {
+				spans.add(new int[]{start, end});
+			}
+			if (i == start) {
+				i++;
+			}
+		}
+		return spans;
+	}
+
+	private List<String> translateSentenceBatches(List<String> ens) throws Exception {
+		List<String> all = new ArrayList<>(ens.size());
+		int batchSize = 12;
+		for (int offset = 0; offset < ens.size(); offset += batchSize) {
+			int end = Math.min(offset + batchSize, ens.size());
+			List<String> batch = ens.subList(offset, end);
+			all.addAll(translateOneBatch(batch));
+		}
+		return all;
+	}
+
+	private List<String> translateOneBatch(List<String> batch) throws Exception {
+		StringBuilder numbered = new StringBuilder();
+		for (int i = 0; i < batch.size(); i++) {
+			numbered.append(i + 1).append(". ").append(batch.get(i).replace("\n", " ")).append("\n");
+		}
+		String system = """
+				You translate English sentences into clear Chinese for Chinese CET-4/6 learners.
+				Keep meaning faithful and concise. Do not add commentary.
+				Return ONLY JSON: {"zh":["..."]} with the SAME number of items and the SAME order.
+				""";
+		String user = """
+				Translate these %d sentences:
+				%s
+				""".formatted(batch.size(), numbered);
+		DeepSeekChatService.ChatResult result = deepSeekChatService.chat(system, user, 0.2);
+		JsonNode root = deepSeekChatService.parseJsonContent(result.content());
+		JsonNode arr = root.path("zh");
+		List<String> out = new ArrayList<>();
+		if (arr.isArray()) {
+			for (JsonNode n : arr) {
+				out.add(n.asText(""));
+			}
+		}
+		while (out.size() < batch.size()) {
+			out.add("");
+		}
+		if (out.size() > batch.size()) {
+			out = out.subList(0, batch.size());
+		}
+		return out;
+	}
+
+	private static String buildContentZh(List<Map<String, Object>> sentences) {
+		if (sentences == null || sentences.isEmpty()) {
+			return null;
+		}
+		StringBuilder sb = new StringBuilder();
+		for (Map<String, Object> s : sentences) {
+			Object zh = s.get("zh");
+			if (zh == null || String.valueOf(zh).isBlank()) {
+				continue;
+			}
+			if (!sb.isEmpty()) {
+				sb.append('\n');
+			}
+			sb.append(String.valueOf(zh).trim());
+		}
+		return sb.isEmpty() ? null : sb.toString();
 	}
 
 	private static String text(JsonNode root, String field) {

@@ -56,14 +56,8 @@ auth.hydrate()
 
 const icon = {
   home: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"/></svg>`,
-  aa: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 17 10 5h1l5 12M6.8 13h7.4"/><path d="M16 17c1.2-3 2.4-4.5 4-4.5"/></svg>`,
-  ear: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12v-1a8 8 0 0 1 16 0v1"/><path d="M6 12v3a3 3 0 0 0 3 3h1"/><path d="M18 12v2a2 2 0 0 1-2 2h-1"/><circle cx="8.5" cy="18.5" r="1.5"/><circle cx="15.5" cy="16.5" r="1.5"/></svg>`,
-  book: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6.5C5.5 5 8.5 5 12 6.5S18.5 8 21 6.5V18c-2.5 1.5-5.5 1.5-9 0s-6.5-1.5-9 0V6.5Z"/></svg>`,
-  pen: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13.5 5.5 18.5 10.5"/><path d="M4 20l4.2-1.1L19 8.1a2.1 2.1 0 0 0 0-3L17 3a2.1 2.1 0 0 0-3 0L5.1 11.8 4 16v4Z"/></svg>`,
   bi: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.8 3.8 5.8 3.8 9s-1.3 6.2-3.8 9c-2.5-2.8-3.8-5.8-3.8-9S9.5 5.8 12 3Z"/></svg>`,
-  tr: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h10M9 6v12"/><path d="M14 14h6M17 11l3 3-3 3"/></svg>`,
   exam: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3h8a2 2 0 0 1 2 2v14l-6-2.5L6 19V5a2 2 0 0 1 2-2Z"/><path d="M9 8h6M9 12h4"/></svg>`,
-  chart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19h16"/><path d="M7 16V9M12 16V5M17 16v-6"/></svg>`,
   me: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c1.8-3.2 4.2-4.5 7-4.5s5.2 1.3 7 4.5"/></svg>`,
   daily: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 11h16"/><path d="M8 15h3M13 15h3" stroke-linecap="round"/></svg>`,
   admin: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3 4.5 7v5c0 4.5 3.2 7.6 7.5 9 4.3-1.4 7.5-4.5 7.5-9V7L12 3Z"/><path d="M9.5 12.2 11.2 14l3.5-3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`
@@ -73,14 +67,8 @@ const navItems = computed(() => {
   const items = [
     { label: '首页', to: '/', icon: icon.home },
     { label: '日报岛', to: '/daily', icon: icon.daily },
-    { label: '单词岛', to: '/islands/vocab', icon: icon.aa },
-    { label: '听力岛', to: '/islands/listening', icon: icon.ear },
-    { label: '阅读岛', to: '/islands/reading', icon: icon.book },
-    { label: '写作岛', to: '/islands/writing', icon: icon.pen },
     { label: '双语岛', to: '/video', icon: icon.bi },
-    { label: '翻译岛', to: '/islands/translation', icon: icon.tr },
     { label: '仿真题岛', to: '/islands/exam', icon: icon.exam },
-    { label: '学习记录', to: '/islands/records', icon: icon.chart },
     { label: '我的岛站', to: '/me', icon: icon.me }
   ]
   if (auth.isAdmin) {

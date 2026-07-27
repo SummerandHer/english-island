@@ -1,8 +1,7 @@
 <template>
   <NModal v-model:show="visible" preset="card" :title="word || '查词'" class="max-w-md">
     <div v-if="loading" class="py-4 text-sm text-gray-500">查询中…</div>
-    <div v-else-if="error" class="py-4 text-sm text-gray-600">{{ error }}</div>
-    <div v-else-if="detail">
+    <template v-else-if="detail">
       <div class="mb-2 flex items-center gap-2">
         <span class="text-xl font-bold">{{ detail.summary.word }}</span>
         <NButton quaternary size="small" @click="speakWord(detail.summary.word)">🔊</NButton>
@@ -16,8 +15,23 @@
           加入生词本
         </NButton>
         <NButton v-else @click="navigateTo('/login')">登录后收藏</NButton>
+        <NButton secondary @click="emit('use-sentence')">看本句译文</NButton>
       </div>
-    </div>
+    </template>
+    <template v-else>
+      <div v-if="fallbackZh" class="space-y-2">
+        <p class="text-lg font-semibold text-gray-800">{{ word }}</p>
+        <p class="text-gray-800">{{ fallbackZh }}</p>
+        <p v-if="fallbackHint" class="text-xs text-gray-500">{{ fallbackHint }}</p>
+      </div>
+      <div v-else class="space-y-2">
+        <p class="text-sm text-gray-600">{{ error || '词库中未找到该词' }}</p>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <NButton type="primary" secondary @click="emit('use-sentence')">看本句译文</NButton>
+        <NButton v-if="!auth.isLoggedIn" @click="navigateTo('/login')">登录</NButton>
+      </div>
+    </template>
   </NModal>
 </template>
 
@@ -30,10 +44,13 @@ const props = defineProps<{
   passageId?: number
   passageTitle?: string
   sourceType?: string
+  fallbackZh?: string
+  fallbackHint?: string
 }>()
 
 const emit = defineEmits<{
   added: []
+  'use-sentence': []
 }>()
 
 const visible = defineModel<boolean>('show', { default: false })
@@ -55,6 +72,7 @@ watch([visible, () => props.word], async ([show, word]) => {
   }
   loading.value = true
   error.value = ''
+  detail.value = null
   try {
     detail.value = await request<VocabDetail>(`/api/v1/vocabulary/lookup?word=${encodeURIComponent(word)}`)
   } catch (e: unknown) {

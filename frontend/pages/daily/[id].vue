@@ -1,128 +1,236 @@
 <template>
-  <div class="reader" :class="{ 'reader--focus': focusMode }">
-    <div v-if="loading" class="state">加载中…</div>
-    <div v-else-if="error" class="state err">{{ error }}</div>
-    <template v-else-if="article">
-      <div class="cover-wrap">
-        <img
-          v-if="article.coverUrl"
-          :src="article.coverUrl"
-          :alt="article.title"
-          class="cover"
-        />
-        <div class="cover-fade" />
-      </div>
-
-      <div class="toolbar-top">
-        <NuxtLink v-if="!focusMode" to="/daily" class="back">← 日报岛</NuxtLink>
-        <button type="button" class="focus-btn" @click="toggleFocus">
-          {{ focusMode ? '退出全屏' : '全屏阅读' }}
-        </button>
-      </div>
-
-      <header class="head">
-        <div class="tags">
-          <span class="tag">{{ article.topicLabel }}</span>
-          <span class="tag soft">{{ article.difficulty.toUpperCase() }}</span>
-          <span class="tag soft">{{ article.wordCount || '—' }} 词</span>
+  <div>
+    <!-- 普通阅读布局（非沉浸） -->
+    <div v-show="!focusMode" class="reader">
+      <div v-if="loading" class="state">加载中…</div>
+      <div v-else-if="error" class="state err">{{ error }}</div>
+      <template v-else-if="article">
+        <div class="toolbar-top">
+          <NuxtLink to="/daily" class="back">← 日报岛</NuxtLink>
+          <button type="button" class="focus-btn" @click="enterFocus">
+            沉浸阅读
+          </button>
         </div>
-        <h1>{{ article.title }}</h1>
-        <p v-if="article.summaryZh" class="summary">{{ article.summaryZh }}</p>
-        <p class="meta">
-          <span v-if="article.sourceAuthor">作者 {{ article.sourceAuthor }}</span>
-          <span v-if="article.sourcePublishedAt"> · {{ article.sourcePublishedAt }}</span>
-          <span v-if="article.sourcePlace"> · {{ article.sourcePlace }}</span>
-          <span> · 排期 {{ article.publishDate }}</span>
-        </p>
-      </header>
 
-      <div class="layout">
-        <div class="main">
-          <p class="hint">划选单词或句子即可标注（苔绿 / 琥珀 / 天空色）</p>
-          <DailyAnnotatableText
-            :content="article.contentEn"
-            :annotations="article.annotations"
-            @annotate="onAnnotate"
+        <header class="head">
+          <div class="tags">
+            <span class="tag">{{ article.topicLabel }}</span>
+            <span class="tag soft">{{ article.difficulty.toUpperCase() }}</span>
+            <span class="tag soft">{{ article.wordCount || '—' }} 词</span>
+          </div>
+          <h1>{{ article.title }}</h1>
+          <p v-if="article.summaryZh" class="summary">{{ article.summaryZh }}</p>
+          <p class="meta">
+            <span v-if="article.sourceAuthor">作者 {{ article.sourceAuthor }}</span>
+            <span v-if="article.sourcePublishedAt"> · {{ article.sourcePublishedAt }}</span>
+            <span v-if="article.sourcePlace"> · {{ article.sourcePlace }}</span>
+            <span> · 排期 {{ article.publishDate }}</span>
+          </p>
+        </header>
+
+        <div
+          v-if="article.coverUrl"
+          class="cover-wrap"
+          :class="`cover-wrap--${coverShape}`"
+          :style="coverWrapStyle"
+        >
+          <img
+            :src="article.coverUrl"
+            :alt="article.title"
+            class="cover"
+            decoding="async"
+            fetchpriority="high"
+            @load="onCoverLoad"
           />
+        </div>
 
-          <section v-if="article.cetVocab?.length" class="panel">
-            <h2>高频词汇</h2>
-            <ul class="vocab">
-              <li v-for="(v, i) in article.cetVocab" :key="i">
-                <strong>{{ v.word }}</strong>
-                <span v-if="v.pos" class="pos">{{ v.pos }}</span>
-                <span>{{ v.zh }}</span>
-              </li>
-            </ul>
-          </section>
+        <div class="layout">
+          <div class="main">
+            <p class="hint">点单词查释义 · 点句子看译文 · 划选后可「翻译」或彩色标注</p>
+            <DailyReadingText
+              :content="article.contentEn"
+              :annotations="article.annotations"
+              :sentences="article.sentences || []"
+              :cet-vocab="article.cetVocab || []"
+              :hard-vocab="article.hardVocab || []"
+              :article-id="article.id"
+              :article-title="article.title"
+              @annotate="onAnnotate"
+            />
 
-          <section v-if="article.hardVocab?.length" class="panel">
-            <h2>难词拆分</h2>
-            <ul class="vocab">
-              <li v-for="(v, i) in article.hardVocab" :key="i">
-                <strong>{{ v.word }}</strong>
-                <span v-if="v.pos" class="pos">{{ v.pos }}</span>
-                <span>{{ v.zh }}</span>
-                <em v-if="v.note">{{ v.note }}</em>
-              </li>
-            </ul>
-          </section>
+            <section v-if="article.cetVocab?.length" class="panel">
+              <h2>高频词汇</h2>
+              <ul class="vocab">
+                <li v-for="(v, i) in article.cetVocab" :key="`c-${i}`">
+                  <strong>{{ v.word }}</strong>
+                  <span v-if="v.pos" class="pos">{{ v.pos }}</span>
+                  <span>{{ v.zh }}</span>
+                </li>
+              </ul>
+            </section>
 
-          <div class="checkin-bar">
-            <p>
-              {{ article.checkedIn ? '今日已打卡，继续保持。' : `阅读约 ${Math.max(0, Math.floor(readSeconds / 60))} 分 ${readSeconds % 60} 秒` }}
+            <section v-if="article.hardVocab?.length" class="panel">
+              <h2>难词拆分</h2>
+              <ul class="vocab">
+                <li v-for="(v, i) in article.hardVocab" :key="`h-${i}`">
+                  <strong>{{ v.word }}</strong>
+                  <span v-if="v.pos" class="pos">{{ v.pos }}</span>
+                  <span>{{ v.zh }}</span>
+                  <em v-if="v.note">{{ v.note }}</em>
+                </li>
+              </ul>
+            </section>
+
+            <div class="checkin-bar">
+              <p>
+                {{ article.checkedIn ? '今日已打卡，继续保持。' : `阅读约 ${Math.max(0, Math.floor(readSeconds / 60))} 分 ${readSeconds % 60} 秒` }}
+              </p>
+              <button
+                type="button"
+                class="checkin-btn"
+                :disabled="article.checkedIn || checking || !canCheckin"
+                @click="doCheckin"
+              >
+                {{ article.checkedIn ? '已完成' : canCheckin ? '完成今日阅读' : `再读 ${90 - readSeconds}s` }}
+              </button>
+              <p v-if="checkinMsg" class="checkin-msg">{{ checkinMsg }}</p>
+            </div>
+
+            <p class="bridge">
+              <NuxtLink to="/translation">摘一句去翻译岛练手 →</NuxtLink>
             </p>
-            <button
-              type="button"
-              class="checkin-btn"
-              :disabled="article.checkedIn || checking || !canCheckin"
-              @click="doCheckin"
-            >
-              {{ article.checkedIn ? '已完成' : canCheckin ? '完成今日阅读' : `再读 ${90 - readSeconds}s` }}
-            </button>
-            <p v-if="checkinMsg" class="checkin-msg">{{ checkinMsg }}</p>
           </div>
 
-          <p class="bridge">
-            <NuxtLink to="/translation">摘一句去翻译岛练手 →</NuxtLink>
-          </p>
+          <aside class="side">
+            <section class="side-card">
+              <h3>可借用句式</h3>
+              <div v-if="!article.structures?.length" class="muted">暂无</div>
+              <article v-for="(s, i) in article.structures" :key="i" class="struct">
+                <p class="struct-en">{{ s.en }}</p>
+                <p v-if="s.zh" class="struct-zh">{{ s.zh }}</p>
+                <p v-if="s.hint" class="struct-hint">{{ s.hint }}</p>
+              </article>
+            </section>
+
+            <section class="side-card">
+              <h3>相关文章</h3>
+              <ul v-if="article.related?.length" class="related">
+                <li v-for="r in article.related" :key="r.id!">
+                  <NuxtLink :to="`/daily/${r.id}`">{{ r.title }}</NuxtLink>
+                  <span>{{ r.publishDate }}</span>
+                </li>
+              </ul>
+              <p v-else class="muted">同主题暂无更多文章</p>
+            </section>
+
+            <section v-if="article.annotations?.length" class="side-card">
+              <h3>我的标注</h3>
+              <ul class="ann-list">
+                <li v-for="a in article.annotations" :key="a.id">
+                  <span :class="['dot', `dot--${a.color}`]" />
+                  <span class="ann-text">{{ a.selectedText }}</span>
+                  <button type="button" class="ann-del" @click="removeAnn(a.id)">删除</button>
+                </li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+      </template>
+    </div>
+
+    <!-- 沉浸模式：盖住侧边栏/顶栏，整屏只剩文章 -->
+    <Teleport to="body">
+      <div
+        v-if="focusMode && article"
+        class="immerse"
+        role="dialog"
+        aria-modal="true"
+        aria-label="沉浸阅读"
+      >
+        <header class="immerse-top">
+          <div class="immerse-brand">
+            <span class="immerse-kicker">沉浸阅读</span>
+            <span class="immerse-topic">{{ article.topicLabel }} · {{ article.difficulty.toUpperCase() }}</span>
+          </div>
+          <button type="button" class="immerse-exit" @click="exitFocus">
+            退出沉浸
+            <kbd>Esc</kbd>
+          </button>
+        </header>
+
+        <div class="immerse-body">
+          <div class="immerse-grid">
+            <div class="immerse-main">
+              <h1 class="immerse-title">{{ article.title }}</h1>
+              <p class="immerse-hint">点词查义 · 点句看译 · 划选可翻译或标注</p>
+              <DailyReadingText
+                :content="article.contentEn"
+                :annotations="article.annotations"
+                :sentences="article.sentences || []"
+                :cet-vocab="article.cetVocab || []"
+                :hard-vocab="article.hardVocab || []"
+                :article-id="article.id"
+                :article-title="article.title"
+                @annotate="onAnnotate"
+              />
+
+              <section v-if="article.cetVocab?.length" class="immerse-vocab">
+                <h2>高频词汇</h2>
+                <ul>
+                  <li v-for="(v, i) in article.cetVocab" :key="`iv-c-${i}`">
+                    <strong>{{ v.word }}</strong>
+                    <span v-if="v.pos" class="pos">{{ v.pos }}</span>
+                    <span class="zh">{{ v.zh }}</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section v-if="article.hardVocab?.length" class="immerse-vocab immerse-vocab--hard">
+                <h2>难词拆分</h2>
+                <ul>
+                  <li v-for="(v, i) in article.hardVocab" :key="`iv-h-${i}`">
+                    <strong>{{ v.word }}</strong>
+                    <span v-if="v.pos" class="pos">{{ v.pos }}</span>
+                    <span class="zh">{{ v.zh }}</span>
+                    <em v-if="v.note">{{ v.note }}</em>
+                  </li>
+                </ul>
+              </section>
+            </div>
+
+            <aside class="immerse-side">
+              <div class="immerse-side-card">
+                <h2>可借用句式</h2>
+                <p v-if="!article.structures?.length" class="immerse-empty">暂无句式卡片</p>
+                <article
+                  v-for="(s, i) in article.structures"
+                  :key="`iv-s-${i}`"
+                  class="immerse-struct"
+                >
+                  <p class="en">{{ s.en }}</p>
+                  <p v-if="s.zh" class="zh">{{ s.zh }}</p>
+                  <p v-if="s.hint" class="hint-line">{{ s.hint }}</p>
+                </article>
+              </div>
+            </aside>
+          </div>
         </div>
 
-        <aside v-if="!focusMode" class="side">
-          <section class="side-card">
-            <h3>可借用句式</h3>
-            <div v-if="!article.structures?.length" class="muted">暂无</div>
-            <article v-for="(s, i) in article.structures" :key="i" class="struct">
-              <p class="struct-en">{{ s.en }}</p>
-              <p v-if="s.zh" class="struct-zh">{{ s.zh }}</p>
-              <p v-if="s.hint" class="struct-hint">{{ s.hint }}</p>
-            </article>
-          </section>
-
-          <section class="side-card">
-            <h3>相关文章</h3>
-            <ul v-if="article.related?.length" class="related">
-              <li v-for="r in article.related" :key="r.id!">
-                <NuxtLink :to="`/daily/${r.id}`">{{ r.title }}</NuxtLink>
-                <span>{{ r.publishDate }}</span>
-              </li>
-            </ul>
-            <p v-else class="muted">同主题暂无更多文章</p>
-          </section>
-
-          <section v-if="article.annotations?.length" class="side-card">
-            <h3>我的标注</h3>
-            <ul class="ann-list">
-              <li v-for="a in article.annotations" :key="a.id">
-                <span :class="['dot', `dot--${a.color}`]" />
-                <span class="ann-text">{{ a.selectedText }}</span>
-                <button type="button" class="ann-del" @click="removeAnn(a.id)">删除</button>
-              </li>
-            </ul>
-          </section>
-        </aside>
+        <footer class="immerse-foot">
+          <span class="immerse-timer">
+            {{ article.checkedIn ? '已打卡' : `${Math.floor(readSeconds / 60)}:${String(readSeconds % 60).padStart(2, '0')}` }}
+          </span>
+          <button
+            type="button"
+            class="immerse-checkin"
+            :disabled="article.checkedIn || checking || !canCheckin"
+            @click="doCheckin"
+          >
+            {{ article.checkedIn ? '已完成' : canCheckin ? '完成今日阅读' : `再读 ${90 - readSeconds}s` }}
+          </button>
+        </footer>
       </div>
-    </template>
+    </Teleport>
   </div>
 </template>
 
@@ -142,22 +250,94 @@ const error = ref('')
 const checking = ref(false)
 const checkinMsg = ref('')
 const readSeconds = ref(0)
+/** 封面宽高比：按原图自适应，并夹在舒适范围内 */
+const coverRatio = ref(16 / 9)
+const coverShape = ref<'wide' | 'standard' | 'tall'>('standard')
 let timer: ReturnType<typeof setInterval> | null = null
 
 const focusMode = computed(() => String(route.query.focus || '') === '1')
 const canCheckin = computed(() => readSeconds.value >= 90)
 
-watch(
-  focusMode,
-  (v) => {
-    setPageLayout(v ? 'focus' : 'default')
-  },
-  { immediate: true }
-)
+const coverWrapStyle = computed(() => ({
+  aspectRatio: String(coverRatio.value)
+}))
+
+function resetCoverLayout() {
+  coverRatio.value = 16 / 9
+  coverShape.value = 'standard'
+}
+
+function onCoverLoad(e: Event) {
+  const img = e.target as HTMLImageElement
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  if (!w || !h) return
+  const raw = w / h
+  // 过宽 → 横幅；方一点 → 标准；偏竖 → 稍高，避免裁成一条细带
+  if (raw >= 1.9) {
+    coverShape.value = 'wide'
+    coverRatio.value = Math.min(raw, 2.2)
+  } else if (raw <= 1.25) {
+    coverShape.value = 'tall'
+    coverRatio.value = Math.max(raw, 1.2)
+  } else {
+    coverShape.value = 'standard'
+    coverRatio.value = Math.min(Math.max(raw, 1.4), 1.85)
+  }
+}
+
+function setFocusQuery(on: boolean) {
+  const q = { ...route.query }
+  if (on) q.focus = '1'
+  else delete q.focus
+  return router.replace({ query: q })
+}
+
+async function enterFocus() {
+  await setFocusQuery(true)
+  nextTick(() => {
+    try {
+      document.documentElement.requestFullscreen?.()
+    } catch {
+      /* 浏览器可能拒绝，覆盖层已足够 */
+    }
+  })
+}
+
+async function exitFocus() {
+  if (document.fullscreenElement) {
+    try {
+      await document.exitFullscreen()
+    } catch {
+      /* ignore */
+    }
+  }
+  await setFocusQuery(false)
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && focusMode.value) {
+    e.preventDefault()
+    exitFocus()
+  }
+}
+
+function onFullscreenChange() {
+  // 用户按系统 Esc 退出浏览器全屏时，同步退出沉浸
+  if (!document.fullscreenElement && focusMode.value) {
+    setFocusQuery(false)
+  }
+}
+
+watch(focusMode, (on) => {
+  if (!import.meta.client) return
+  document.body.style.overflow = on ? 'hidden' : ''
+})
 
 async function load() {
   loading.value = true
   error.value = ''
+  resetCoverLayout()
   try {
     const id = Number(route.params.id)
     article.value = await request<DailyArticleDetail>(`/api/v1/daily/articles/${id}`)
@@ -169,16 +349,6 @@ async function load() {
   }
 }
 
-function toggleFocus() {
-  const q = { ...route.query }
-  if (focusMode.value) {
-    delete q.focus
-  } else {
-    q.focus = '1'
-  }
-  router.replace({ query: q })
-}
-
 async function onAnnotate(payload: {
   startOffset: number
   endOffset: number
@@ -187,6 +357,7 @@ async function onAnnotate(payload: {
 }) {
   if (!auth.isLoggedIn) {
     checkinMsg.value = '登录后即可保存标注'
+    await exitFocus()
     navigateTo('/login')
     return
   }
@@ -218,6 +389,7 @@ async function removeAnn(id: number) {
 
 async function doCheckin() {
   if (!article.value || !auth.isLoggedIn) {
+    await exitFocus()
     navigateTo('/login')
     return
   }
@@ -246,11 +418,21 @@ onMounted(() => {
       readSeconds.value += 1
     }
   }, 1000)
+  window.addEventListener('keydown', onKeydown)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  if (focusMode.value) {
+    document.body.style.overflow = 'hidden'
+  }
 })
 
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
-  setPageLayout('default')
+  window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.body.style.overflow = ''
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.().catch(() => {})
+  }
 })
 
 watch(() => route.params.id, () => {
@@ -262,14 +444,9 @@ watch(() => route.params.id, () => {
 
 <style scoped>
 .reader {
-  max-width: 1100px;
+  max-width: 1080px;
   margin: 0 auto;
   padding-bottom: 3rem;
-}
-
-.reader--focus {
-  max-width: 720px;
-  padding: 1.25rem 1.25rem 3rem;
 }
 
 .state {
@@ -280,38 +457,41 @@ watch(() => route.params.id, () => {
 
 .cover-wrap {
   position: relative;
-  margin: 0 -0.25rem 1rem;
-  border-radius: 22px;
+  width: 100%;
+  margin: 0.35rem 0 1.5rem;
+  border-radius: 20px;
   overflow: hidden;
-  aspect-ratio: 21 / 8;
-  background: linear-gradient(135deg, #d1e0c9, #e8eee4 50%, #c2d6be);
+  background: #dfe8dc;
+  box-shadow: 0 10px 28px rgba(45, 71, 57, 0.08);
 }
 
-.reader--focus .cover-wrap {
-  margin: 0 0 1rem;
-  aspect-ratio: 16 / 7;
+.cover-wrap--wide {
+  max-height: min(38vh, 360px);
+}
+
+.cover-wrap--standard {
+  max-height: min(44vh, 400px);
+}
+
+.cover-wrap--tall {
+  max-height: min(48vh, 460px);
 }
 
 .cover {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
-}
-
-.cover-fade {
-  position: absolute;
-  inset: auto 0 0;
-  height: 45%;
-  background: linear-gradient(transparent, rgba(232, 238, 228, 0.85));
-  pointer-events: none;
+  object-position: center;
 }
 
 .toolbar-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 .back {
@@ -324,18 +504,39 @@ watch(() => route.params.id, () => {
   border: 1px solid var(--island-line);
   background: #fff;
   border-radius: 999px;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.82rem;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--island-forest);
   cursor: pointer;
 }
 
 .head h1 {
-  margin: 0.4rem 0;
+  margin: 0.45rem 0 0.35rem;
   font-family: var(--font-display);
   font-size: clamp(1.55rem, 3vw, 2.1rem);
   line-height: 1.25;
   color: var(--island-forest-deep);
+}
+
+.summary {
+  margin: 0.45rem 0 0.15rem;
+  color: var(--island-muted);
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.meta {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  color: var(--island-muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1.5rem;
+  margin-top: 0.25rem;
 }
 
 .tags {
@@ -358,30 +559,6 @@ watch(() => route.params.id, () => {
   border: 1px solid var(--island-line);
   color: var(--island-muted);
   font-weight: 500;
-}
-
-.summary {
-  margin: 0.35rem 0;
-  color: var(--island-muted);
-  line-height: 1.55;
-  font-size: 0.95rem;
-}
-
-.meta {
-  margin: 0.5rem 0 0;
-  font-size: 0.78rem;
-  color: var(--island-muted);
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 1.5rem;
-  margin-top: 1.25rem;
-}
-
-.reader--focus .layout {
-  grid-template-columns: 1fr;
 }
 
 @media (max-width: 900px) {
@@ -586,4 +763,317 @@ watch(() => route.params.id, () => {
 }
 
 .muted { color: var(--island-muted); font-size: 0.82rem; }
+
+/* —— 沉浸层（盖住全局侧边栏） —— */
+.immerse {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 90% 40% at 50% -5%, rgba(194, 214, 190, 0.5), transparent 55%),
+    #f3f6f0;
+  color: var(--island-text);
+}
+
+.immerse-top {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid rgba(59, 83, 62, 0.08);
+  background: rgba(243, 246, 240, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.immerse-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.immerse-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--island-forest);
+}
+
+.immerse-topic {
+  font-size: 0.8rem;
+  color: var(--island-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.immerse-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--island-line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--island-forest-deep);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.immerse-exit kbd {
+  font-size: 0.68rem;
+  font-family: inherit;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--island-sage-soft);
+  color: var(--island-muted);
+}
+
+.immerse-body {
+  flex: 1;
+  overflow: auto;
+  width: 100%;
+  padding: 1.35rem clamp(1.25rem, 3vw, 2.5rem) 6.5rem;
+}
+
+.immerse-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 1.75rem 2.25rem;
+  max-width: 1360px;
+  width: 100%;
+  margin: 0 auto;
+  align-items: start;
+}
+
+@media (min-width: 1280px) {
+  .immerse-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 2rem 2.75rem;
+  }
+}
+
+@media (max-width: 960px) {
+  .immerse-grid {
+    grid-template-columns: 1fr;
+    gap: 1.35rem;
+  }
+
+  .immerse-side {
+    order: 2;
+    position: static;
+  }
+}
+
+.immerse-main {
+  min-width: 0;
+  padding-bottom: 0.5rem;
+}
+
+.immerse-main :deep(.body) {
+  font-size: clamp(1.08rem, 1.15vw, 1.22rem);
+  line-height: 2.05;
+  letter-spacing: 0.01em;
+}
+
+.immerse-title {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 2.8vw, 2.2rem);
+  line-height: 1.28;
+  color: var(--island-forest-deep);
+  text-wrap: balance;
+}
+
+.immerse-hint {
+  margin: 0 0 1.5rem;
+  font-size: 0.8rem;
+  color: var(--island-muted);
+}
+
+.immerse-vocab {
+  margin-top: 2.25rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid rgba(59, 83, 62, 0.12);
+}
+
+.immerse-vocab h2,
+.immerse-side-card h2 {
+  margin: 0 0 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--island-forest-deep);
+  letter-spacing: 0.02em;
+}
+
+.immerse-vocab ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.6rem 0.85rem;
+}
+
+.immerse-vocab li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.45rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(59, 83, 62, 0.07);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.immerse-vocab--hard li {
+  background: rgba(255, 252, 245, 0.92);
+}
+
+.immerse-vocab .pos {
+  font-size: 0.72rem;
+  color: var(--island-muted);
+}
+
+.immerse-vocab .zh {
+  color: var(--island-text);
+}
+
+.immerse-vocab em {
+  width: 100%;
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--island-muted);
+}
+
+.immerse-side {
+  position: sticky;
+  top: 0.65rem;
+  max-height: calc(100vh - 5.5rem);
+  overflow: auto;
+}
+
+.immerse-side-card {
+  padding: 1.15rem 1.2rem 1.25rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(59, 83, 62, 0.08);
+  box-shadow: 0 10px 28px rgba(45, 71, 57, 0.05);
+}
+
+.immerse-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--island-muted);
+}
+
+.immerse-struct {
+  padding: 0.9rem 0;
+  border-bottom: 1px dashed rgba(59, 83, 62, 0.14);
+}
+
+.immerse-struct:first-of-type {
+  padding-top: 0.1rem;
+}
+
+.immerse-struct:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.immerse-struct .en {
+  margin: 0;
+  font-family: Georgia, 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--island-text);
+}
+
+.immerse-struct .zh {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--island-muted);
+}
+
+.immerse-struct .hint-line {
+  margin: 0.4rem 0 0;
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--island-forest);
+  background: var(--island-sage-soft);
+  border-radius: 6px;
+  padding: 0.18rem 0.5rem;
+}
+
+.immerse-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem calc(0.9rem + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(243, 246, 240, 0.97) 32%);
+  pointer-events: none;
+}
+
+.immerse-foot > * {
+  pointer-events: auto;
+}
+
+.immerse-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--island-muted);
+  min-width: 3.5rem;
+}
+
+.immerse-checkin {
+  border: none;
+  border-radius: 999px;
+  background: var(--island-forest);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.65rem 1.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(45, 71, 57, 0.18);
+}
+
+.immerse-checkin:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .immerse {
+    animation: immerse-in 0.28s ease-out;
+  }
+}
+
+@keyframes immerse-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 </style>

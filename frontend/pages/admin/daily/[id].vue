@@ -3,7 +3,7 @@
     <NuxtLink to="/admin/daily" class="text-sm text-[var(--island-primary)]">← 日报列表</NuxtLink>
     <h1 class="text-xl font-bold">{{ isNew ? '新建日报' : '编辑日报' }}</h1>
     <p class="text-sm text-gray-500">
-      只需填写标题、正文与出处信息，点「一键 AI 增强」生成主题、难度、摘要、词汇与句式。
+      只需填写标题、正文与出处信息，点「一键 AI 增强」生成主题、难度、摘要、词汇、句式与逐句中译。
     </p>
 
     <NForm v-if="!loading" label-placement="top">
@@ -27,8 +27,57 @@
             <NInput v-model:value="form.sourcePublishedAt" type="date" />
           </NFormItem>
         </div>
-        <NFormItem label="封面图 URL" required>
-          <NInput v-model:value="form.coverUrl" placeholder="/home/hero-banner.png" />
+        <NFormItem label="封面图" required>
+          <div class="cover-editor w-full space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="cover-upload-btn">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  class="sr-only"
+                  :disabled="coverUploading"
+                  @change="onCoverUpload"
+                />
+                {{ coverUploading ? '上传中…' : '上传封面' }}
+              </label>
+              <span class="text-xs text-gray-400">JPG / PNG / WebP / GIF，建议宽图</span>
+            </div>
+            <NInput
+              v-model:value="form.coverUrl"
+              placeholder="上传后自动填入，也可手写 /home/… 或 https://…"
+              clearable
+              @update:value="onCoverUrlManualEdit"
+            />
+            <p class="text-xs text-gray-500">
+              可上传本地图片，或填写站内路径 / 外链。修改后点「保存」对用户端生效。
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="p in coverPresets"
+                :key="p.url"
+                type="button"
+                class="cover-preset"
+                :class="{ active: form.coverUrl === p.url }"
+                @click="applyCoverPreset(p.url)"
+              >
+                {{ p.label }}
+              </button>
+            </div>
+            <div class="cover-preview-wrap">
+              <img
+                v-if="form.coverUrl"
+                :src="form.coverUrl"
+                alt="封面预览"
+                class="cover-preview"
+                @error="coverPreviewBroken = true"
+                @load="coverPreviewBroken = false"
+              />
+              <div v-else class="cover-preview-empty">上传或填写 URL 后可预览封面</div>
+              <p v-if="form.coverUrl && coverPreviewBroken" class="cover-preview-err">
+                图片加载失败，请检查 URL 是否可访问
+              </p>
+            </div>
+          </div>
         </NFormItem>
         <div class="grid gap-4 md:grid-cols-2">
           <NFormItem label="排期日（仅周一 / 三 / 五）" required>
@@ -83,7 +132,7 @@
           <p class="text-sm leading-relaxed">{{ form.summaryZh }}</p>
         </div>
         <div v-if="coverHint">
-          <p class="text-xs text-gray-500">封面提示（可选参考）</p>
+          <p class="text-xs text-gray-500">封面提示（可参考生成图，再填到上方「封面图」URL）</p>
           <p class="text-xs text-gray-600">{{ coverHint }}</p>
         </div>
 
@@ -128,6 +177,21 @@
             <p v-if="s.hint" class="text-emerald-700">{{ s.hint }}</p>
           </article>
         </div>
+        <div v-if="sentencePreview.length" class="space-y-2">
+          <p class="text-xs font-medium text-gray-600">
+            逐句中译预览（{{ sentencePreview.length }} 句）
+          </p>
+          <div class="max-h-64 space-y-2 overflow-y-auto rounded-md bg-white p-2 shadow-sm">
+            <article
+              v-for="(s, i) in sentencePreview"
+              :key="'sent' + i"
+              class="border-b border-gray-50 pb-2 text-xs last:border-0 last:pb-0"
+            >
+              <p class="font-medium text-gray-800">{{ i + 1 }}. {{ s.en }}</p>
+              <p class="text-emerald-800">{{ s.zh || '（缺译文）' }}</p>
+            </article>
+          </div>
+        </div>
       </section>
 
       <NCollapse>
@@ -154,6 +218,12 @@
           </NFormItem>
           <NFormItem label="句式结构 JSON">
             <NInput v-model:value="form.structuresJson" type="textarea" :rows="3" />
+          </NFormItem>
+          <NFormItem label="全文中译">
+            <NInput v-model:value="form.contentZh" type="textarea" :rows="4" />
+          </NFormItem>
+          <NFormItem label="逐句对齐 JSON">
+            <NInput v-model:value="form.sentencesJson" type="textarea" :rows="4" />
           </NFormItem>
         </NCollapseItem>
       </NCollapse>
@@ -182,27 +252,36 @@
 </template>
 
 <script setup lang="ts">
-import type { AdminDailyArticleDetail, DailyAiEnrichmentResult, DailyStructureItem, DailyVocabItem } from '~/types/api'
+import type {
+  AdminDailyArticleDetail,
+  DailyAiEnrichmentResult,
+  DailySentenceItem,
+  DailyStructureItem,
+  DailyVocabItem
+} from '~/types/api'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
 const route = useRoute()
 const router = useRouter()
-const { request } = useApi()
+const { request, uploadForm } = useApi()
 
 const isNew = computed(() => route.params.id === 'new')
 const loading = ref(!isNew.value)
 const saving = ref(false)
 const parsing = ref(false)
+const coverUploading = ref(false)
 const parseMsg = ref('')
 const saveMsg = ref('')
 const coverHint = ref('')
+const coverPreviewBroken = ref(false)
 const gate = ref<string | null>(null)
 const gateError = ref('')
 const warnings = ref<string[]>([])
 const cetPreview = ref<DailyVocabItem[]>([])
 const hardPreview = ref<DailyVocabItem[]>([])
 const structPreview = ref<DailyStructureItem[]>([])
+const sentencePreview = ref<DailySentenceItem[]>([])
 
 function nextPublishDay(): string {
   const d = new Date()
@@ -224,6 +303,7 @@ const form = ref({
   difficulty: '' as string,
   contentEn: '',
   coverUrl: '/home/hero-banner.png',
+  coverAssetId: null as number | null,
   summaryZh: '',
   publishDate: nextPublishDay(),
   sourcePublishedAt: '' as string,
@@ -232,12 +312,71 @@ const form = ref({
   cetVocabJson: '[]',
   hardVocabJson: '[]',
   structuresJson: '[]',
+  contentZh: '',
+  sentencesJson: '[]',
   wordCount: null as number | null,
   status: 'draft',
   aiStatus: 'idle',
   aiError: '' as string,
   aiVersion: '' as string
 })
+
+const coverPresets = [
+  { label: '海岛横幅', url: '/home/hero-banner.png' },
+  { label: '电台背景', url: '/home/radio-bg.png' },
+  { label: '单词卡片', url: '/home/word-card-ref.png' },
+  { label: '推荐图 1', url: '/home/rec-thumb-1.png' },
+  { label: '推荐图 2', url: '/home/rec-thumb-2.png' },
+  { label: '推荐图 3', url: '/home/rec-thumb-3.png' }
+]
+
+watch(
+  () => form.value.coverUrl,
+  () => {
+    coverPreviewBroken.value = false
+  }
+)
+
+function applyCoverPreset(url: string) {
+  form.value.coverUrl = url
+  form.value.coverAssetId = null
+}
+
+function onCoverUrlManualEdit() {
+  form.value.coverAssetId = null
+}
+
+async function onCoverUpload(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    saveMsg.value = '请选择图片文件（JPG / PNG / WebP / GIF）'
+    input.value = ''
+    return
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    saveMsg.value = '图片请小于 8MB'
+    input.value = ''
+    return
+  }
+  coverUploading.value = true
+  saveMsg.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await uploadForm<{ id: number; url: string }>('/api/v1/admin/files/cover', fd, 120_000)
+    form.value.coverUrl = res.url
+    form.value.coverAssetId = res.id
+    coverPreviewBroken.value = false
+    saveMsg.value = '封面已上传，请点「保存」写入本篇日报'
+  } catch (err: unknown) {
+    saveMsg.value = err instanceof Error ? err.message : '封面上传失败'
+  } finally {
+    coverUploading.value = false
+    input.value = ''
+  }
+}
 
 const topicLabel: Record<string, string> = {
   education: '教育学习',
@@ -302,6 +441,7 @@ const hasEnrichment = computed(() => {
   return !!(
     form.value.summaryZh ||
     (form.value.cetVocabJson && form.value.cetVocabJson !== '[]') ||
+    (form.value.sentencesJson && form.value.sentencesJson !== '[]') ||
     gate.value
   )
 })
@@ -334,6 +474,7 @@ function syncPreviewsFromForm() {
   cetPreview.value = parseJsonArray(form.value.cetVocabJson)
   hardPreview.value = parseJsonArray(form.value.hardVocabJson)
   structPreview.value = parseJsonArray(form.value.structuresJson)
+  sentencePreview.value = parseJsonArray(form.value.sentencesJson)
 }
 
 onMounted(async () => {
@@ -352,6 +493,7 @@ onMounted(async () => {
       difficulty: data.difficulty || '',
       contentEn: data.contentEn,
       coverUrl: data.coverUrl || '',
+      coverAssetId: data.coverAssetId ?? null,
       summaryZh: data.summaryZh || '',
       publishDate: data.publishDate,
       sourcePublishedAt: data.sourcePublishedAt || '',
@@ -360,6 +502,8 @@ onMounted(async () => {
       cetVocabJson: data.cetVocabJson || '[]',
       hardVocabJson: data.hardVocabJson || '[]',
       structuresJson: data.structuresJson || '[]',
+      contentZh: data.contentZh || '',
+      sentencesJson: data.sentencesJson || '[]',
       wordCount: data.wordCount ?? null,
       status: data.status,
       aiStatus: data.aiStatus || 'idle',
@@ -414,6 +558,8 @@ async function runAiEnrich() {
     if (typeof data.cetVocabJson === 'string') form.value.cetVocabJson = data.cetVocabJson
     if (typeof data.hardVocabJson === 'string') form.value.hardVocabJson = data.hardVocabJson
     if (typeof data.structuresJson === 'string') form.value.structuresJson = data.structuresJson
+    if (typeof data.contentZh === 'string') form.value.contentZh = data.contentZh
+    if (typeof data.sentencesJson === 'string') form.value.sentencesJson = data.sentencesJson
     if (typeof data.coverHint === 'string') coverHint.value = data.coverHint
     if (typeof data.slugSuggestion === 'string' && data.slugSuggestion && !form.value.slug) {
       form.value.slug = data.slugSuggestion
@@ -421,6 +567,7 @@ async function runAiEnrich() {
     cetPreview.value = data.cetVocab || parseJsonArray(data.cetVocabJson)
     hardPreview.value = data.hardVocab || parseJsonArray(data.hardVocabJson)
     structPreview.value = data.structures || parseJsonArray(data.structuresJson)
+    sentencePreview.value = data.sentences || parseJsonArray(data.sentencesJson)
     parseMsg.value =
       data.gate === 'ok' ? '增强完成，可保存或发布' : '增强完成，请核对警告项后再发布'
   } catch (e) {
@@ -438,7 +585,8 @@ function buildBody(statusOverride?: string) {
     topic: form.value.topic || undefined,
     difficulty: form.value.difficulty || undefined,
     contentEn: form.value.contentEn,
-    coverUrl: form.value.coverUrl || undefined,
+    coverUrl: form.value.coverUrl?.trim() || undefined,
+    coverAssetId: form.value.coverAssetId ?? undefined,
     summaryZh: form.value.summaryZh || undefined,
     publishDate: form.value.publishDate,
     sourcePublishedAt: form.value.sourcePublishedAt || undefined,
@@ -447,6 +595,8 @@ function buildBody(statusOverride?: string) {
     cetVocabJson: form.value.cetVocabJson || undefined,
     hardVocabJson: form.value.hardVocabJson || undefined,
     structuresJson: form.value.structuresJson || undefined,
+    contentZh: form.value.contentZh || undefined,
+    sentencesJson: form.value.sentencesJson || undefined,
     wordCount: form.value.wordCount ?? liveWordCount.value,
     status: statusOverride || form.value.status
   }
@@ -491,3 +641,89 @@ async function persist(status: string) {
   }
 }
 </script>
+
+<style scoped>
+.cover-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--island-forest, #3b533e);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.cover-upload-btn:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cover-editor code {
+  font-size: 0.75rem;
+}
+
+.cover-preset {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.75rem;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.cover-preset:hover {
+  border-color: var(--island-primary);
+  color: var(--island-primary);
+}
+
+.cover-preset.active {
+  border-color: transparent;
+  background: var(--island-sage-soft, #e4efe0);
+  color: var(--island-forest-deep, #2f4333);
+  font-weight: 600;
+}
+
+.cover-preview-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: #e8eee4;
+  aspect-ratio: 16 / 9;
+  max-height: 280px;
+  width: 100%;
+}
+
+.cover-preview {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.cover-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.cover-preview-err {
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  color: #b45353;
+  background: #fef2f2;
+}
+</style>

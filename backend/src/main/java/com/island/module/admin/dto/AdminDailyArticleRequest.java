@@ -56,6 +56,10 @@ public class AdminDailyArticleRequest {
 
 	private String structuresJson;
 
+	private String contentZh;
+
+	private String sentencesJson;
+
 	private Integer wordCount;
 
 	/** draft | ready | published */

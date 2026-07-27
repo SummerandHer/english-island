@@ -468,6 +468,13 @@ export interface DailyStructureItem {
   hint?: string
 }
 
+export interface DailySentenceItem {
+  en: string
+  zh?: string
+  startOffset: number
+  endOffset: number
+}
+
 export interface DailyArticleDetail {
   id: number
   title: string
@@ -476,6 +483,7 @@ export interface DailyArticleDetail {
   topicLabel: string
   difficulty: string
   contentEn: string
+  contentZh?: string | null
   coverUrl?: string | null
   summaryZh?: string | null
   publishDate: string
@@ -486,6 +494,7 @@ export interface DailyArticleDetail {
   cetVocab: DailyVocabItem[]
   hardVocab: DailyVocabItem[]
   structures: DailyStructureItem[]
+  sentences: DailySentenceItem[]
   checkedIn: boolean
   annotations: DailyAnnotation[]
   related: DailyArticleSummary[]
@@ -518,6 +527,7 @@ export interface AdminDailyArticleDetail {
   topic: string
   difficulty: string
   contentEn: string
+  contentZh?: string | null
   coverUrl?: string | null
   coverAssetId?: number | null
   summaryZh?: string | null
@@ -529,6 +539,7 @@ export interface AdminDailyArticleDetail {
   cetVocabJson?: string | null
   hardVocabJson?: string | null
   structuresJson?: string | null
+  sentencesJson?: string | null
   wordCount?: number | null
   status: string
   aiStatus?: string | null
@@ -550,10 +561,13 @@ export interface DailyAiEnrichmentResult {
   cetVocabJson?: string | null
   hardVocabJson?: string | null
   structuresJson?: string | null
+  contentZh?: string | null
+  sentencesJson?: string | null
   aiRawJson?: string | null
   cetVocab?: DailyVocabItem[]
   hardVocab?: DailyVocabItem[]
   structures?: DailyStructureItem[]
+  sentences?: DailySentenceItem[]
 }
 
 /** 仿真题岛 */

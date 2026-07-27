@@ -51,6 +51,29 @@ const topicLabel: Record<string, string> = {
 
 const columns: DataTableColumns<AdminDailyArticleSummary> = [
   { title: 'ID', key: 'id', width: 60 },
+  {
+    title: '封面',
+    key: 'coverUrl',
+    width: 88,
+    render: (r) =>
+      r.coverUrl
+        ? h('img', {
+            src: r.coverUrl,
+            alt: '',
+            decoding: 'async',
+            style: {
+              width: '72px',
+              height: '48px',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              borderRadius: '8px',
+              display: 'block',
+              background: '#eef2ee',
+              imageRendering: '-webkit-optimize-contrast'
+            }
+          })
+        : h('span', { class: 'text-xs text-gray-400' }, '无')
+  },
   { title: '标题', key: 'title', ellipsis: { tooltip: true } },
   {
     title: '主题',

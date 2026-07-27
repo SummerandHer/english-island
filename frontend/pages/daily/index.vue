@@ -79,8 +79,7 @@
               :src="item.coverUrl"
               alt=""
               class="thumb"
-              width="72"
-              height="56"
+              decoding="async"
             />
             <div class="row-body">
               <p class="row-title">{{ item.title }}</p>
@@ -355,11 +354,14 @@ h1 {
 }
 
 .thumb {
-  width: 72px;
-  height: 56px;
+  width: 96px;
+  height: 72px;
   object-fit: cover;
+  object-position: center;
   border-radius: 10px;
   flex-shrink: 0;
+  background: var(--island-surface);
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .row-title {
