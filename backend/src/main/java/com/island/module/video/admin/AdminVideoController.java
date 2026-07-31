@@ -5,6 +5,7 @@ import com.island.common.PageResult;
 import com.island.module.file.FileService;
 import com.island.module.file.dto.FileDto;
 import com.island.module.video.VideoSeries;
+import com.island.module.video.VideoService;
 import com.island.module.video.admin.dto.*;
 import com.island.security.IslandUserDetails;
 import jakarta.validation.Valid;
@@ -25,6 +26,7 @@ public class AdminVideoController {
 
 	private final AdminVideoService adminVideoService;
 	private final FileService fileService;
+	private final VideoService videoService;
 
 	@PostMapping("/videos/parse")
 	public ApiResponse<ParseVideoResponse> parse(
@@ -79,6 +81,11 @@ public class AdminVideoController {
 			@AuthenticationPrincipal IslandUserDetails user,
 			@RequestParam("file") MultipartFile file) {
 		return ApiResponse.ok(fileService.upload(user.getUser().getId(), file, "images"));
+	}
+
+	@GetMapping("/video-tags")
+	public ApiResponse<List<VideoService.TagDto>> listTags() {
+		return ApiResponse.ok(videoService.listActiveTags());
 	}
 
 	@GetMapping("/video-series")

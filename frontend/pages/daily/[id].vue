@@ -46,17 +46,21 @@
 
         <div class="layout">
           <div class="main">
-            <p class="hint">点单词查释义 · 点句子看译文 · 划选后可「翻译」或彩色标注</p>
-            <DailyReadingText
-              :content="article.contentEn"
-              :annotations="article.annotations"
-              :sentences="article.sentences || []"
-              :cet-vocab="article.cetVocab || []"
-              :hard-vocab="article.hardVocab || []"
-              :article-id="article.id"
-              :article-title="article.title"
-              @annotate="onAnnotate"
-            />
+            <div class="paper">
+              <p class="hint">点单词查释义 · 点句子在句下看译文 · 侧栏可开全文翻译</p>
+              <DailyReadingText
+                ref="readerRef"
+                :content="article.contentEn"
+                :annotations="article.annotations"
+                :sentences="article.sentences || []"
+                :cet-vocab="article.cetVocab || []"
+                :hard-vocab="article.hardVocab || []"
+                :article-id="article.id"
+                :article-title="article.title"
+                :show-full-zh="showFullZh"
+                @annotate="onAnnotate"
+              />
+            </div>
 
             <section v-if="article.cetVocab?.length" class="panel">
               <h2>高频词汇</h2>
@@ -102,15 +106,37 @@
           </div>
 
           <aside class="side">
-            <section class="side-card">
-              <h3>可借用句式</h3>
-              <div v-if="!article.structures?.length" class="muted">暂无</div>
-              <article v-for="(s, i) in article.structures" :key="i" class="struct">
-                <p class="struct-en">{{ s.en }}</p>
-                <p v-if="s.zh" class="struct-zh">{{ s.zh }}</p>
-                <p v-if="s.hint" class="struct-hint">{{ s.hint }}</p>
-              </article>
-            </section>
+            <div class="side-sticky">
+              <section class="side-card side-card--tools">
+                <h3>阅读辅助</h3>
+                <button
+                  type="button"
+                  class="tool-btn"
+                  :class="{ on: showFullZh }"
+                  :disabled="!hasSentenceZh"
+                  @click="toggleFullZh"
+                >
+                  {{ showFullZh ? '隐藏全文翻译' : '全文翻译' }}
+                </button>
+                <p class="tool-hint">
+                  {{
+                    hasSentenceZh
+                      ? (showFullZh ? '已在每段英文下显示中文' : '开启后，每段下方显示中文译文')
+                      : '本篇暂无逐句译文，请管理员重新 AI 增强'
+                  }}
+                </p>
+              </section>
+
+              <section class="side-card">
+                <h3>可借用句式</h3>
+                <div v-if="!article.structures?.length" class="muted">暂无</div>
+                <article v-for="(s, i) in article.structures" :key="i" class="struct">
+                  <p class="struct-en">{{ s.en }}</p>
+                  <p v-if="s.zh" class="struct-zh">{{ s.zh }}</p>
+                  <p v-if="s.hint" class="struct-hint">{{ s.hint }}</p>
+                </article>
+              </section>
+            </div>
 
             <section class="side-card">
               <h3>相关文章</h3>
@@ -122,18 +148,56 @@
               </ul>
               <p v-else class="muted">同主题暂无更多文章</p>
             </section>
-
-            <section v-if="article.annotations?.length" class="side-card">
-              <h3>我的标注</h3>
-              <ul class="ann-list">
-                <li v-for="a in article.annotations" :key="a.id">
-                  <span :class="['dot', `dot--${a.color}`]" />
-                  <span class="ann-text">{{ a.selectedText }}</span>
-                  <button type="button" class="ann-del" @click="removeAnn(a.id)">删除</button>
-                </li>
-              </ul>
-            </section>
           </aside>
+        </div>
+
+        <!-- 左侧悬浮：我的标注（不占右侧学习区） -->
+        <div class="ann-float">
+          <button
+            type="button"
+            class="ann-float-btn"
+            :class="{ open: annPanelOpen }"
+            @click="annPanelOpen = !annPanelOpen"
+          >
+            <span class="ann-float-label">我的标注</span>
+            <span class="ann-count">{{ article.annotations?.length || 0 }}</span>
+          </button>
+          <div v-if="annPanelOpen" class="ann-float-panel">
+            <div class="ann-head">
+              <h3>我的标注</h3>
+              <button type="button" class="ann-dock-close" @click="annPanelOpen = false">关闭</button>
+            </div>
+            <p v-if="!article.annotations?.length" class="muted ann-empty">
+              划选正文即可标注，点条目可跳回原文
+            </p>
+            <ul v-else class="ann-list">
+              <li v-for="a in article.annotations" :key="a.id">
+                <span :class="['dot', `dot--${a.color}`]" />
+                <button
+                  type="button"
+                  class="ann-text"
+                  :title="'定位到正文'"
+                  @click="jumpToAnn(a.startOffset); annPanelOpen = false"
+                >
+                  {{ a.selectedText }}
+                </button>
+                <button type="button" class="ann-del" @click="removeAnn(a.id)">删除</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 窄屏：右侧补全文翻译入口（桌面已在侧栏） -->
+        <div class="zh-float">
+          <button
+            type="button"
+            class="zh-float-btn"
+            :class="{ on: showFullZh }"
+            :disabled="!hasSentenceZh"
+            @click="toggleFullZh"
+          >
+            {{ showFullZh ? '隐译' : '全文译' }}
+          </button>
         </div>
       </template>
     </div>
@@ -162,8 +226,9 @@
           <div class="immerse-grid">
             <div class="immerse-main">
               <h1 class="immerse-title">{{ article.title }}</h1>
-              <p class="immerse-hint">点词查义 · 点句看译 · 划选可翻译或标注</p>
+              <p class="immerse-hint">点词查义 · 点句在句下看译 · 侧栏可开全文翻译</p>
               <DailyReadingText
+                ref="immerseReaderRef"
                 :content="article.contentEn"
                 :annotations="article.annotations"
                 :sentences="article.sentences || []"
@@ -171,6 +236,7 @@
                 :hard-vocab="article.hardVocab || []"
                 :article-id="article.id"
                 :article-title="article.title"
+                :show-full-zh="showFullZh"
                 @annotate="onAnnotate"
               />
 
@@ -199,20 +265,67 @@
             </div>
 
             <aside class="immerse-side">
-              <div class="immerse-side-card">
-                <h2>可借用句式</h2>
-                <p v-if="!article.structures?.length" class="immerse-empty">暂无句式卡片</p>
-                <article
-                  v-for="(s, i) in article.structures"
-                  :key="`iv-s-${i}`"
-                  class="immerse-struct"
-                >
-                  <p class="en">{{ s.en }}</p>
-                  <p v-if="s.zh" class="zh">{{ s.zh }}</p>
-                  <p v-if="s.hint" class="hint-line">{{ s.hint }}</p>
-                </article>
+              <div class="immerse-side-sticky">
+                <div class="immerse-side-card">
+                  <h2>阅读辅助</h2>
+                  <button
+                    type="button"
+                    class="tool-btn"
+                    :class="{ on: showFullZh }"
+                    :disabled="!hasSentenceZh"
+                    @click="toggleFullZh"
+                  >
+                    {{ showFullZh ? '隐藏全文翻译' : '全文翻译' }}
+                  </button>
+                  <p class="tool-hint">
+                    {{ showFullZh ? '每段下已显示中文' : '点句看译 · 或开启全文翻译' }}
+                  </p>
+                </div>
+
+                <div class="immerse-side-card">
+                  <h2>可借用句式</h2>
+                  <p v-if="!article.structures?.length" class="immerse-empty">暂无句式卡片</p>
+                  <article
+                    v-for="(s, i) in article.structures"
+                    :key="`iv-s-${i}`"
+                    class="immerse-struct"
+                  >
+                    <p class="en">{{ s.en }}</p>
+                    <p v-if="s.zh" class="zh">{{ s.zh }}</p>
+                    <p v-if="s.hint" class="hint-line">{{ s.hint }}</p>
+                  </article>
+                </div>
               </div>
             </aside>
+          </div>
+        </div>
+
+        <!-- 沉浸模式同样用左下标注浮层 -->
+        <div class="ann-float ann-float--immerse">
+          <button
+            type="button"
+            class="ann-float-btn"
+            :class="{ open: annPanelOpen }"
+            @click="annPanelOpen = !annPanelOpen"
+          >
+            <span class="ann-float-label">我的标注</span>
+            <span class="ann-count">{{ article.annotations?.length || 0 }}</span>
+          </button>
+          <div v-if="annPanelOpen" class="ann-float-panel">
+            <div class="ann-head">
+              <h3>我的标注</h3>
+              <button type="button" class="ann-dock-close" @click="annPanelOpen = false">关闭</button>
+            </div>
+            <p v-if="!article.annotations?.length" class="muted ann-empty">划选正文即可标注</p>
+            <ul v-else class="ann-list">
+              <li v-for="a in article.annotations" :key="`iv-a-${a.id}`">
+                <span :class="['dot', `dot--${a.color}`]" />
+                <button type="button" class="ann-text" @click="jumpToAnn(a.startOffset); annPanelOpen = false">
+                  {{ a.selectedText }}
+                </button>
+                <button type="button" class="ann-del" @click="removeAnn(a.id)">删除</button>
+              </li>
+            </ul>
           </div>
         </div>
 
@@ -250,6 +363,10 @@ const error = ref('')
 const checking = ref(false)
 const checkinMsg = ref('')
 const readSeconds = ref(0)
+const annPanelOpen = ref(false)
+const showFullZh = ref(false)
+const readerRef = ref<{ scrollToAnnotation: (n: number) => void } | null>(null)
+const immerseReaderRef = ref<{ scrollToAnnotation: (n: number) => void } | null>(null)
 /** 封面宽高比：按原图自适应，并夹在舒适范围内 */
 const coverRatio = ref(16 / 9)
 const coverShape = ref<'wide' | 'standard' | 'tall'>('standard')
@@ -257,6 +374,19 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 const focusMode = computed(() => String(route.query.focus || '') === '1')
 const canCheckin = computed(() => readSeconds.value >= 90)
+const hasSentenceZh = computed(() =>
+  (article.value?.sentences || []).some((s) => !!(s.zh && s.zh.trim()))
+)
+
+function toggleFullZh() {
+  if (!hasSentenceZh.value) return
+  showFullZh.value = !showFullZh.value
+}
+
+function jumpToAnn(startOffset: number) {
+  const target = focusMode.value ? immerseReaderRef.value : readerRef.value
+  target?.scrollToAnnotation(startOffset)
+}
 
 const coverWrapStyle = computed(() => ({
   aspectRatio: String(coverRatio.value)
@@ -438,15 +568,17 @@ onBeforeUnmount(() => {
 watch(() => route.params.id, () => {
   readSeconds.value = 0
   checkinMsg.value = ''
+  showFullZh.value = false
+  annPanelOpen.value = false
   load()
 })
 </script>
 
 <style scoped>
 .reader {
-  max-width: 1080px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding-bottom: 3rem;
+  padding-bottom: 4.5rem;
 }
 
 .state {
@@ -461,8 +593,8 @@ watch(() => route.params.id, () => {
   margin: 0.35rem 0 1.5rem;
   border-radius: 20px;
   overflow: hidden;
-  background: #dfe8dc;
-  box-shadow: 0 10px 28px rgba(45, 71, 57, 0.08);
+  background: #e8ebe4;
+  box-shadow: 0 10px 28px rgba(45, 71, 57, 0.06);
 }
 
 .cover-wrap--wide {
@@ -534,9 +666,18 @@ watch(() => route.params.id, () => {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1.35rem;
   margin-top: 0.25rem;
+  align-items: start;
+}
+
+.paper {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1.15rem 1.25rem 1.4rem;
+  border: 1px solid rgba(45, 71, 57, 0.06);
+  box-shadow: 0 8px 24px rgba(45, 71, 57, 0.04);
 }
 
 .tags {
@@ -550,7 +691,7 @@ watch(() => route.params.id, () => {
   font-weight: 600;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: var(--island-sage);
+  background: #e8efe4;
   color: var(--island-forest-deep);
 }
 
@@ -561,8 +702,9 @@ watch(() => route.params.id, () => {
   font-weight: 500;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; }
+  .side { display: none; }
 }
 
 .hint {
@@ -573,8 +715,10 @@ watch(() => route.params.id, () => {
 
 .panel {
   margin-top: 1.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--island-line);
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(45, 71, 57, 0.06);
 }
 
 .panel h2 {
@@ -610,10 +754,11 @@ watch(() => route.params.id, () => {
 }
 
 .checkin-bar {
-  margin-top: 1.75rem;
+  margin-top: 1.25rem;
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  background: var(--island-sage-soft);
+  background: #fff;
+  border: 1px solid rgba(45, 71, 57, 0.08);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -656,9 +801,42 @@ watch(() => route.params.id, () => {
 .side-card {
   padding: 1rem;
   border-radius: 16px;
-  background: var(--island-card);
-  border: 1px solid rgba(59, 83, 62, 0.07);
+  background: #ffffff;
+  border: 1px solid rgba(59, 83, 62, 0.08);
   margin-bottom: 0.85rem;
+}
+
+.ann-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ann-head h3,
+.ann-head h2 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.ann-count {
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: #1f2a22;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ann-empty {
+  margin: 0;
+  line-height: 1.5;
 }
 
 .side-card h3 {
@@ -743,14 +921,27 @@ watch(() => route.params.id, () => {
   height: 8px;
   border-radius: 50%;
   margin-top: 0.3rem;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
-.dot--moss { background: rgb(140, 168, 120); }
-.dot--amber { background: rgb(220, 180, 110); }
-.dot--sky { background: rgb(140, 180, 200); }
+.dot--moss { background: #9fc23a; }
+.dot--amber { background: #e0a820; }
+.dot--sky { background: #3a9fd0; }
 
 .ann-text {
   line-height: 1.4;
   word-break: break-word;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--island-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ann-text:hover {
+  color: #1d5bb8;
+  text-decoration: underline;
 }
 
 .ann-del {
@@ -764,6 +955,155 @@ watch(() => route.params.id, () => {
 
 .muted { color: var(--island-muted); font-size: 0.82rem; }
 
+.side-sticky {
+  position: sticky;
+  top: 4.2rem;
+  z-index: 8;
+  margin-bottom: 0.85rem;
+}
+
+.side-card--tools h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+}
+
+.tool-btn {
+  width: 100%;
+  border: 1px solid rgba(45, 71, 57, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--island-forest-deep);
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tool-btn:hover:not(:disabled) {
+  border-color: var(--island-forest);
+}
+
+.tool-btn.on {
+  background: var(--island-forest);
+  border-color: transparent;
+  color: #fff;
+}
+
+.tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--island-muted);
+}
+
+/* 左下：标注浮层（桌面+移动统一） */
+.ann-float {
+  position: fixed;
+  left: 1rem;
+  bottom: 1.25rem;
+  z-index: 50;
+}
+
+.ann-float--immerse {
+  z-index: 220;
+}
+
+.ann-float-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(45, 71, 57, 0.14);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--island-forest-deep);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.65rem 0.95rem;
+  box-shadow: 0 10px 28px rgba(20, 30, 22, 0.16);
+  cursor: pointer;
+}
+
+.ann-float-btn.open {
+  background: #1f2a22;
+  border-color: transparent;
+  color: #fff;
+}
+
+.ann-float-btn.open .ann-count {
+  background: #fff;
+  color: #1f2a22;
+}
+
+.ann-float-label {
+  line-height: 1;
+}
+
+.ann-float-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.55rem);
+  width: min(86vw, 320px);
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(45, 71, 57, 0.1);
+  box-shadow: 0 16px 40px rgba(20, 30, 22, 0.18);
+}
+
+.ann-dock-close {
+  border: none;
+  background: transparent;
+  color: var(--island-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+/* 窄屏右侧：全文译（宽屏侧栏已有） */
+.zh-float {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .zh-float {
+    display: block;
+    position: fixed;
+    right: 1rem;
+    bottom: 1.25rem;
+    z-index: 50;
+  }
+}
+
+.zh-float-btn {
+  border: 1px solid rgba(45, 71, 57, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--island-forest-deep);
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.7rem 0.95rem;
+  box-shadow: 0 10px 28px rgba(20, 30, 22, 0.18);
+  cursor: pointer;
+}
+
+.zh-float-btn.on {
+  background: var(--island-forest);
+  color: #fff;
+  border-color: transparent;
+}
+
+.zh-float-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* —— 沉浸层（盖住全局侧边栏） —— */
 .immerse {
   position: fixed;
@@ -771,9 +1111,7 @@ watch(() => route.params.id, () => {
   z-index: 200;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(ellipse 90% 40% at 50% -5%, rgba(194, 214, 190, 0.5), transparent 55%),
-    #f3f6f0;
+  background: #f7f8f6;
   color: var(--island-text);
 }
 
@@ -785,7 +1123,7 @@ watch(() => route.params.id, () => {
   gap: 1rem;
   padding: 0.85rem 1.25rem;
   border-bottom: 1px solid rgba(59, 83, 62, 0.08);
-  background: rgba(243, 246, 240, 0.92);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
 }
 
@@ -832,7 +1170,7 @@ watch(() => route.params.id, () => {
   font-family: inherit;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: var(--island-sage-soft);
+  background: #eef1ec;
   color: var(--island-muted);
 }
 
@@ -874,7 +1212,11 @@ watch(() => route.params.id, () => {
 
 .immerse-main {
   min-width: 0;
-  padding-bottom: 0.5rem;
+  padding: 1.15rem 1.3rem 1.4rem;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(45, 71, 57, 0.06);
+  box-shadow: 0 8px 24px rgba(45, 71, 57, 0.04);
 }
 
 .immerse-main :deep(.body) {
@@ -962,12 +1304,48 @@ watch(() => route.params.id, () => {
   overflow: auto;
 }
 
+.immerse-side-sticky {
+  display: grid;
+  gap: 0;
+}
+
 .immerse-side-card {
   padding: 1.15rem 1.2rem 1.25rem;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.86);
+  background: #ffffff;
   border: 1px solid rgba(59, 83, 62, 0.08);
   box-shadow: 0 10px 28px rgba(45, 71, 57, 0.05);
+  margin-bottom: 0.85rem;
+}
+
+.immerse-side-card .tool-btn {
+  width: 100%;
+  border: 1px solid rgba(45, 71, 57, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--island-forest-deep);
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+}
+
+.immerse-side-card .tool-btn.on {
+  background: var(--island-forest);
+  border-color: transparent;
+  color: #fff;
+}
+
+.immerse-side-card .tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.immerse-side-card .tool-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--island-muted);
 }
 
 .immerse-empty {
@@ -1026,7 +1404,7 @@ watch(() => route.params.id, () => {
   justify-content: center;
   gap: 1rem;
   padding: 0.9rem 1.25rem calc(0.9rem + env(safe-area-inset-bottom));
-  background: linear-gradient(transparent, rgba(243, 246, 240, 0.97) 32%);
+  background: linear-gradient(transparent, rgba(247, 248, 246, 0.97) 32%);
   pointer-events: none;
 }
 

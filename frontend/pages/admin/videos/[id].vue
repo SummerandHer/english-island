@@ -21,6 +21,15 @@
         <NFormItem label="简介">
           <NInput v-model:value="meta.description" type="textarea" :rows="2" />
         </NFormItem>
+        <NFormItem label="主题标签">
+          <NSelect
+            v-model:value="meta.tagIds"
+            multiple
+            filterable
+            :options="tagOptions"
+            placeholder="可多选主题"
+          />
+        </NFormItem>
         <NFormItem label="难度">
           <NSelect v-model:value="meta.difficulty" :options="difficultyOptions" />
         </NFormItem>
@@ -56,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AdminVideoDetail, SentenceDraft, VideoSeriesItem } from '~/types/api'
+import type { AdminVideoDetail, SentenceDraft, VideoSeriesItem, VideoTag } from '~/types/api'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
@@ -77,10 +86,12 @@ const meta = reactive({
   seriesId: null as number | null,
   difficulty: 'medium',
   isVip: false,
-  status: 1
+  status: 1,
+  tagIds: [] as number[]
 })
 
 const seriesOptions = ref<{ label: string; value: number }[]>([])
+const tagOptions = ref<{ label: string; value: number }[]>([])
 const difficultyOptions = [
   { label: '简单', value: 'easy' },
   { label: '中等', value: 'medium' },
@@ -88,12 +99,14 @@ const difficultyOptions = [
 ]
 
 onMounted(async () => {
-  const [detail, series] = await Promise.all([
+  const [detail, series, tags] = await Promise.all([
     request<AdminVideoDetail>(`/api/v1/admin/videos/${route.params.id}`),
-    request<VideoSeriesItem[]>('/api/v1/admin/video-series')
+    request<VideoSeriesItem[]>('/api/v1/admin/video-series'),
+    request<VideoTag[]>('/api/v1/admin/video-tags')
   ])
   video.value = detail
   seriesOptions.value = series.map((s) => ({ label: s.title, value: s.id }))
+  tagOptions.value = tags.map((t) => ({ label: t.name, value: t.id }))
   meta.title = detail.title
   meta.coverUrl = detail.coverUrl ?? ''
   meta.description = detail.description ?? ''
@@ -101,6 +114,7 @@ onMounted(async () => {
   meta.difficulty = detail.difficulty
   meta.isVip = detail.vip
   meta.status = detail.status
+  meta.tagIds = (detail.tags ?? []).map((t) => t.id)
   sentences.value = detail.sentences.map((s) => ({
     seq: s.seq,
     startMs: s.startMs,
@@ -122,7 +136,8 @@ async function saveMeta() {
         seriesId: meta.seriesId,
         difficulty: meta.difficulty,
         isVip: meta.isVip ? 1 : 0,
-        status: meta.status
+        status: meta.status,
+        tagIds: meta.tagIds
       }
     })
     message.success('已保存')

@@ -77,8 +77,8 @@ english/
 ├── Agent须知/               # 双 Agent 开发规范 + UI 参考图
 ├── docker-compose.yml       # MySQL + Redis
 ├── 项目规划.md              # 产品与技术规划
-├── 库表设计.md / .sql       # 数据库设计文档
-├── 视频源推荐.md            # B 站 Embed 视频清单
+├── 库表设计.md / .sql       # 表域索引；DDL 以 Flyway 为准
+├── Agent须知/UI参考/        # 双语 UI 图 + 视频源推荐.md
 └── README.md
 ```
 
@@ -240,7 +240,7 @@ Flyway `V2__seed_data.sql` 已预置：
 - 翻译模拟题 × 1
 - 双语视频 × 3（B 站 Embed，含 TED-Ed 示例句轴）
 
-视频源详见 [视频源推荐.md](./视频源推荐.md)。
+视频源详见 [Agent须知/UI参考/视频源推荐.md](./Agent须知/UI参考/视频源推荐.md)。
 
 ---
 
@@ -252,7 +252,7 @@ Flyway `V2__seed_data.sql` 已预置：
 - [项目规划.md](./项目规划.md)
 - 双语模块 UI：[Agent须知/03-双语模块UI规范.md](./Agent须知/03-双语模块UI规范.md)
 
-前端 Agent 需对照 `Agent须知/双语模块页面设计参考图.png` 验收双语页。
+前端 Agent 需对照 `Agent须知/UI参考/双语模块页面设计参考图.png` 验收双语页。
 
 ---
 
@@ -282,7 +282,7 @@ Flyway `V2__seed_data.sql` 已预置：
 检查后端是否在 `8080` 运行，CORS 是否包含前端地址。
 
 **Flyway 迁移失败**  
-清空 `island` 库后重启后端，或检查 `库表设计.sql` 与迁移脚本是否一致。
+清空 `island` 库后重启后端，或检查 `backend/src/main/resources/db/migration/` 是否完整执行。
 
 **B 站视频无法播放**  
 大陆网络需能访问 B 站；句轴同步 MVP 为模拟进度，后期可接 B 站播放器 API。
@@ -294,9 +294,9 @@ Flyway `V2__seed_data.sql` 已预置：
 | 文档 | 说明 |
 |------|------|
 | [项目规划.md](./项目规划.md) | 产品边界、技术选型、MVP 范围 |
-| [库表设计.md](./库表设计.md) | ER 图与表说明 |
-| [库表设计.sql](./库表设计.sql) | 完整 DDL 参考 |
-| [视频源推荐.md](./视频源推荐.md) | 推荐 Embed 视频与合规说明 |
+| [库表设计.md](./库表设计.md) | 表域索引（DDL 以 Flyway 为准） |
+| [库表设计.sql](./库表设计.sql) | DDL 指引（非全量脚本） |
+| [Agent须知/UI参考/视频源推荐.md](./Agent须知/UI参考/视频源推荐.md) | 推荐 Embed 视频与合规说明 |
 
 ---
 

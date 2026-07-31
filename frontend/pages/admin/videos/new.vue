@@ -52,6 +52,15 @@
         <NFormItem label="简介">
           <NInput v-model:value="meta.description" type="textarea" :rows="2" />
         </NFormItem>
+        <NFormItem label="主题标签">
+          <NSelect
+            v-model:value="meta.tagIds"
+            multiple
+            filterable
+            :options="tagOptions"
+            placeholder="可多选主题"
+          />
+        </NFormItem>
         <NFormItem label="难度">
           <NSelect v-model:value="meta.difficulty" :options="difficultyOptions" />
         </NFormItem>
@@ -70,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ParseVideoResult, SentenceDraft, VideoSeriesItem } from '~/types/api'
+import type { ParseVideoResult, SentenceDraft, VideoSeriesItem, VideoTag } from '~/types/api'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
@@ -95,12 +104,14 @@ const meta = reactive({
   coverUrl: '',
   description: '',
   seriesId: null as number | null,
+  tagIds: [] as number[],
   difficulty: 'medium',
   isVip: false,
   publish: true
 })
 
 const seriesOptions = ref<{ label: string; value: number }[]>([])
+const tagOptions = ref<{ label: string; value: number }[]>([])
 const difficultyOptions = [
   { label: '简单', value: 'easy' },
   { label: '中等', value: 'medium' },
@@ -108,8 +119,12 @@ const difficultyOptions = [
 ]
 
 onMounted(async () => {
-  const list = await request<VideoSeriesItem[]>('/api/v1/admin/video-series')
+  const [list, tags] = await Promise.all([
+    request<VideoSeriesItem[]>('/api/v1/admin/video-series'),
+    request<VideoTag[]>('/api/v1/admin/video-tags')
+  ])
   seriesOptions.value = list.map((s) => ({ label: s.title, value: s.id }))
+  tagOptions.value = tags.map((t) => ({ label: t.name, value: t.id }))
 })
 
 function onFileChange(e: Event) {
@@ -181,6 +196,7 @@ async function publish() {
         playUrl: playUrl.value,
         description: meta.description,
         seriesId: meta.seriesId,
+        tagIds: meta.tagIds,
         difficulty: meta.difficulty,
         isVip: meta.isVip ? 1 : 0,
         status: meta.publish ? 1 : 0,

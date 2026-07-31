@@ -20,8 +20,11 @@ public record AdminVideoDetail(
 		Integer sortOrder,
 		Integer status,
 		LocalDateTime createdAt,
+		List<TagView> tags,
 		List<SentenceView> sentences
 ) {
+	public record TagView(Integer id, String name, String slug) {}
+
 	public record SentenceView(
 			Long id, int seq, int startMs, int endMs, String textEn, String textZh
 	) {}

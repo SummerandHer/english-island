@@ -8,6 +8,8 @@ import com.island.module.vocabulary.dto.AddUserVocabularyRequest;
 import com.island.module.vocabulary.dto.VocabReviewRequest;
 import com.island.module.vocabulary.dto.NotebookReviewBatchRequest;
 import com.island.module.vocabulary.dto.VocabSettingsRequest;
+import com.island.module.vocabulary.mapper.DictEntryMapper;
+import com.island.module.vocabulary.mapper.DictLemmaMapper;
 import com.island.module.vocabulary.mapper.UserVocabSettingsMapper;
 import com.island.module.vocabulary.mapper.VocabDailyCheckinMapper;
 import com.island.module.vocabulary.mapper.UserVocabReviewMapper;
@@ -17,12 +19,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,12 +39,16 @@ public class VocabularyService {
 
 	private static final int DAILY_LIMIT = 20;
 	private static final int SEARCH_LIMIT = 20;
+	private static final String SOURCE_ECDICT_LOOKUP = "ecdict-lookup";
+	private static final int PROMOTED_FREQ_RANK = 900_000;
 
 	private final VocabularyMapper vocabularyMapper;
 	private final UserVocabReviewMapper reviewMapper;
 	private final UserVocabularyMapper userVocabularyMapper;
 	private final UserVocabSettingsMapper settingsMapper;
 	private final VocabDailyCheckinMapper checkinMapper;
+	private final DictEntryMapper dictEntryMapper;
+	private final DictLemmaMapper dictLemmaMapper;
 	private final ObjectMapper objectMapper;
 
 	public VocabSettingsView getSettings(Long userId) {
@@ -173,17 +181,24 @@ public class VocabularyService {
 		if (word == null || word.isBlank()) {
 			throw new BusinessException(400, "单词不能为空");
 		}
-		String normalized = word.trim().toLowerCase().replaceAll("[^a-z'-]", "");
+		String normalized = normalizeWord(word);
 		if (normalized.isEmpty()) {
 			throw new BusinessException(400, "无效的单词");
 		}
-		Vocabulary v = vocabularyMapper.selectOne(new LambdaQueryWrapper<Vocabulary>()
-				.apply("LOWER(word) = {0}", normalized)
-				.last("LIMIT 1"));
-		if (v == null) {
-			throw new BusinessException(404, "词库中未找到该词");
+
+		for (String candidate : lookupCandidates(normalized)) {
+			Vocabulary v = findVocabulary(candidate);
+			if (v != null) {
+				return toDetail(v, "vocabulary", candidate, normalized);
+			}
 		}
-		return toDetail(v);
+		for (String candidate : lookupCandidates(normalized)) {
+			DictEntry d = findDictEntry(candidate);
+			if (d != null) {
+				return toDictDetail(d, candidate, normalized);
+			}
+		}
+		throw new BusinessException(404, "词库中未找到该词");
 	}
 
 	public VocabStats getStats(Long userId) {
@@ -289,13 +304,20 @@ public class VocabularyService {
 
 	@Transactional
 	public void addToNotebook(Long userId, AddUserVocabularyRequest request) {
-		Vocabulary vocab = vocabularyMapper.selectById(request.getVocabularyId());
+		Long vocabId = request.getVocabularyId();
+		Vocabulary vocab;
+		if (vocabId != null && vocabId > 0) {
+			vocab = vocabularyMapper.selectById(vocabId);
+		} else {
+			vocab = promoteFromDict(request.getWord());
+			vocabId = vocab.getId();
+		}
 		if (vocab == null) {
 			throw new BusinessException(404, "词汇不存在");
 		}
 		UserVocabulary existing = userVocabularyMapper.selectOne(new LambdaQueryWrapper<UserVocabulary>()
 				.eq(UserVocabulary::getUserId, userId)
-				.eq(UserVocabulary::getVocabularyId, request.getVocabularyId()));
+				.eq(UserVocabulary::getVocabularyId, vocabId));
 		if (existing != null) {
 			if (request.getNote() != null && !request.getNote().isBlank()) {
 				existing.setNote(request.getNote().trim());
@@ -309,7 +331,7 @@ public class VocabularyService {
 		}
 		UserVocabulary uv = new UserVocabulary();
 		uv.setUserId(userId);
-		uv.setVocabularyId(request.getVocabularyId());
+		uv.setVocabularyId(vocabId);
 		String sourceType = request.getSourceType();
 		uv.setSourceType(sourceType != null && !sourceType.isBlank() ? sourceType.trim() : "manual");
 		uv.setSourceId(request.getSourceId());
@@ -360,6 +382,9 @@ public class VocabularyService {
 		int need = DAILY_LIMIT - (int) total;
 		List<Vocabulary> candidates = vocabularyMapper.selectList(new LambdaQueryWrapper<Vocabulary>()
 				.eq(Vocabulary::getDifficulty, examLevel)
+				.and(w -> w.isNull(Vocabulary::getSourceNote)
+						.or()
+						.ne(Vocabulary::getSourceNote, SOURCE_ECDICT_LOOKUP))
 				.orderByAsc(Vocabulary::getFreqRank)
 				.last("LIMIT " + (need + existing.size() + 50)));
 
@@ -436,13 +461,183 @@ public class VocabularyService {
 	}
 
 	private VocabDetail toDetail(Vocabulary v) {
+		return toDetail(v, "vocabulary", v.getWord(), v.getWord());
+	}
+
+	private VocabDetail toDetail(Vocabulary v, String lookupSource, String matchedWord, String queryWord) {
 		return new VocabDetail(
 				toListItem(v),
 				v.getMeaningZh(),
 				v.getExampleEn(),
 				v.getExampleZh(),
 				v.getCollocation(),
-				parsePhrases(v.getPhrasesJson()));
+				parsePhrases(v.getPhrasesJson()),
+				lookupSource,
+				matchedWord,
+				queryWord);
+	}
+
+	private VocabDetail toDictDetail(DictEntry d, String matchedWord, String queryWord) {
+		String exam = guessExamLevel(d.getTags());
+		VocabListItem summary = new VocabListItem(
+				0L,
+				d.getWord(),
+				d.getPhonetic(),
+				firstPos(d.getPos()),
+				briefMeaning(d.getMeaningZh()),
+				exam,
+				d.getFrq());
+		return new VocabDetail(
+				summary,
+				d.getMeaningZh(),
+				null,
+				null,
+				null,
+				List.of(),
+				"dict",
+				matchedWord,
+				queryWord);
+	}
+
+	private Vocabulary promoteFromDict(String rawWord) {
+		if (!StringUtils.hasText(rawWord)) {
+			throw new BusinessException(400, "请提供单词以加入生词本");
+		}
+		String normalized = normalizeWord(rawWord);
+		VocabDetail hit;
+		try {
+			hit = lookupByWord(normalized);
+		} catch (BusinessException e) {
+			throw new BusinessException(404, "词典中未找到该词，无法加入生词本");
+		}
+		String lemmaWord = StringUtils.hasText(hit.matchedWord()) ? hit.matchedWord() : normalized;
+		Vocabulary existing = findVocabulary(lemmaWord);
+		if (existing != null) {
+			return existing;
+		}
+		DictEntry d = findDictEntry(lemmaWord);
+		if (d == null) {
+			throw new BusinessException(404, "词典中未找到该词，无法加入生词本");
+		}
+		Vocabulary v = new Vocabulary();
+		v.setWord(d.getWord());
+		v.setPhonetic(d.getPhonetic());
+		v.setPartOfSpeech(firstPos(d.getPos()));
+		String meaning = d.getMeaningZh();
+		v.setMeaningZh(meaning.length() > 500 ? meaning.substring(0, 500) : meaning);
+		v.setDifficulty(guessExamLevel(d.getTags()));
+		v.setFreqRank(d.getFrq() != null ? Math.max(d.getFrq(), PROMOTED_FREQ_RANK) : PROMOTED_FREQ_RANK);
+		v.setSourceNote(SOURCE_ECDICT_LOOKUP);
+		try {
+			vocabularyMapper.insert(v);
+		} catch (DuplicateKeyException e) {
+			Vocabulary again = findVocabulary(d.getWord());
+			if (again != null) {
+				return again;
+			}
+			throw e;
+		}
+		return v;
+	}
+
+	private Vocabulary findVocabulary(String word) {
+		return vocabularyMapper.selectOne(new LambdaQueryWrapper<Vocabulary>()
+				.apply("LOWER(word) = {0}", word)
+				.last("LIMIT 1"));
+	}
+
+	private DictEntry findDictEntry(String word) {
+		return dictEntryMapper.selectOne(new LambdaQueryWrapper<DictEntry>()
+				.eq(DictEntry::getWord, word)
+				.last("LIMIT 1"));
+	}
+
+	private List<String> lookupCandidates(String normalized) {
+		LinkedHashSet<String> out = new LinkedHashSet<>();
+		out.add(normalized);
+		DictLemma mapped = dictLemmaMapper.selectOne(new LambdaQueryWrapper<DictLemma>()
+				.eq(DictLemma::getVariant, normalized)
+				.last("LIMIT 1"));
+		if (mapped != null && StringUtils.hasText(mapped.getLemma())) {
+			out.add(normalizeWord(mapped.getLemma()));
+		}
+		out.addAll(ruleLemmas(normalized));
+		return new ArrayList<>(out);
+	}
+
+	static List<String> ruleLemmas(String word) {
+		List<String> out = new ArrayList<>();
+		if (word.length() < 4) {
+			return out;
+		}
+		if (word.endsWith("ies") && word.length() > 4) {
+			out.add(word.substring(0, word.length() - 3) + "y");
+		}
+		if (word.endsWith("ves") && word.length() > 4) {
+			out.add(word.substring(0, word.length() - 3) + "f");
+			out.add(word.substring(0, word.length() - 3) + "fe");
+		}
+		if (word.endsWith("ses") || word.endsWith("xes") || word.endsWith("zes")
+				|| word.endsWith("ches") || word.endsWith("shes")) {
+			out.add(word.substring(0, word.length() - 2));
+		}
+		if (word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us") && !word.endsWith("is")) {
+			out.add(word.substring(0, word.length() - 1));
+		}
+		if (word.endsWith("ying") && word.length() > 5) {
+			out.add(word.substring(0, word.length() - 4) + "ie");
+		}
+		if (word.endsWith("ing") && word.length() > 5) {
+			String base = word.substring(0, word.length() - 3);
+			out.add(base);
+			if (base.length() >= 2 && base.charAt(base.length() - 1) == base.charAt(base.length() - 2)) {
+				out.add(base.substring(0, base.length() - 1));
+			}
+			out.add(base + "e");
+		}
+		if (word.endsWith("ied") && word.length() > 4) {
+			out.add(word.substring(0, word.length() - 3) + "y");
+		}
+		if (word.endsWith("ed") && word.length() > 4) {
+			String base = word.substring(0, word.length() - 2);
+			out.add(base);
+			out.add(base + "e");
+			if (base.length() >= 2 && base.charAt(base.length() - 1) == base.charAt(base.length() - 2)) {
+				out.add(base.substring(0, base.length() - 1));
+			}
+		}
+		if (word.endsWith("est") && word.length() > 4) {
+			out.add(word.substring(0, word.length() - 3));
+			out.add(word.substring(0, word.length() - 3) + "e");
+		}
+		if (word.endsWith("er") && word.length() > 4) {
+			out.add(word.substring(0, word.length() - 2));
+			out.add(word.substring(0, word.length() - 2) + "e");
+		}
+		return out;
+	}
+
+	private static String normalizeWord(String word) {
+		return word.trim().toLowerCase().replaceAll("[^a-z'-]", "");
+	}
+
+	private static String guessExamLevel(String tags) {
+		if (tags != null && tags.toLowerCase().contains("cet6")) {
+			return "cet6";
+		}
+		return "cet4";
+	}
+
+	private static String firstPos(String pos) {
+		if (!StringUtils.hasText(pos)) {
+			return null;
+		}
+		String p = pos.split("/")[0].trim();
+		int colon = p.indexOf(':');
+		if (colon > 0) {
+			p = p.substring(0, colon);
+		}
+		return p.length() > 16 ? p.substring(0, 16) : p;
 	}
 
 	private static String briefMeaning(String meaning) {
@@ -490,7 +685,10 @@ public class VocabularyService {
 			String exampleEn,
 			String exampleZh,
 			String collocation,
-			List<PhraseItem> phrases) {
+			List<PhraseItem> phrases,
+			String lookupSource,
+			String matchedWord,
+			String queryWord) {
 	}
 
 	public record TodayItem(VocabListItem vocab, int familiarity) {

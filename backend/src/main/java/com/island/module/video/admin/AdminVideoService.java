@@ -11,6 +11,7 @@ import com.island.module.file.dto.FileDto;
 import com.island.module.post.FileAsset;
 import com.island.module.post.mapper.FileAssetMapper;
 import com.island.module.video.Video;
+import com.island.module.video.VideoService;
 import com.island.module.video.VocabCounter;
 import com.island.module.video.VideoSentence;
 import com.island.module.video.VideoSeries;
@@ -44,6 +45,7 @@ public class AdminVideoService {
 	private final WhisperAsrService whisperAsrService;
 	private final SentenceZhDraftService sentenceZhDraftService;
 	private final IslandProperties islandProperties;
+	private final VideoService videoService;
 
 	public ParseVideoResponse parseUpload(Long adminId, MultipartFile file, boolean generateZh) {
 		log.info("[视频解析] 收到上传，管理员 id={}，文件={}，大小={} bytes",
@@ -128,6 +130,7 @@ public class AdminVideoService {
 		}
 		videoMapper.insert(video);
 		saveSentences(video.getId(), req.getSentences());
+		videoService.replaceVideoTags(video.getId(), req.getTagIds());
 		log.info("[视频解析] 视频已发布 id={} title={}", video.getId(), video.getTitle());
 		return video.getId();
 	}
@@ -158,12 +161,15 @@ public class AdminVideoService {
 				.map(s -> new AdminVideoDetail.SentenceView(
 						s.getId(), s.getSeq(), s.getStartMs(), s.getEndMs(), s.getTextEn(), s.getTextZh()))
 				.toList();
+		var tagViews = videoService.listTagsForVideo(id).stream()
+				.map(t -> new AdminVideoDetail.TagView(t.id(), t.name(), t.slug()))
+				.toList();
 		return new AdminVideoDetail(
 				video.getId(), video.getSeriesId(), video.getTitle(), video.getDescription(),
 				video.getCoverUrl(), video.getStorageType(), video.getProvider(),
 				video.getSourceUrl(), video.getEmbedBvid(), video.getPlayUrl(),
 				video.getDurationSec(), video.getDifficulty(), video.getIsVip() == 1,
-				video.getSortOrder(), video.getStatus(), video.getCreatedAt(), sentences);
+				video.getSortOrder(), video.getStatus(), video.getCreatedAt(), tagViews, sentences);
 	}
 
 	@Transactional
@@ -178,6 +184,9 @@ public class AdminVideoService {
 		if (req.getSortOrder() != null) video.setSortOrder(req.getSortOrder());
 		if (req.getStatus() != null) video.setStatus(req.getStatus());
 		videoMapper.updateById(video);
+		if (req.getTagIds() != null) {
+			videoService.replaceVideoTags(id, req.getTagIds());
+		}
 	}
 
 	@Transactional

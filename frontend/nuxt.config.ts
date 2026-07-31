@@ -9,6 +9,12 @@ export default defineNuxtConfig({
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8080'
     }
   },
+  routeRules: {
+    '/sim-exam': { redirect: { to: '/islands/exam', statusCode: 301 } },
+    '/sim-exam/short': { redirect: { to: '/islands/exam/short', statusCode: 301 } },
+    '/sim-exam/long': { redirect: { to: '/islands/exam/long', statusCode: 301 } },
+    '/sim-exam/practice/**': { redirect: { to: '/islands/exam/practice/**', statusCode: 301 } }
+  },
   app: {
     head: {
       title: 'ISLAND · 四六级岛',

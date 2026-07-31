@@ -33,7 +33,10 @@
       <div v-if="subsLoading" class="text-sm text-gray-400">加载中…</div>
       <ul v-else-if="subs.length" class="space-y-2 text-sm">
         <li v-for="s in subs" :key="s.submissionId" class="flex flex-wrap items-center justify-between gap-2">
-          <NuxtLink :to="`/islands/exam/practice/${s.passageId}`" class="text-[var(--island-primary)]">
+          <NuxtLink
+            :to="`/islands/exam/practice/${s.passageId}?submission=${s.submissionId}`"
+            class="text-[var(--island-primary)]"
+          >
             {{ s.passageTitle }}
           </NuxtLink>
           <span class="text-gray-500">{{ s.correctCount }}/{{ s.totalQuestions }} · {{ s.elapsedSeconds }}s</span>

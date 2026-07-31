@@ -252,6 +252,76 @@ public class SimExamService {
 				.toList();
 	}
 
+	/** 回看某次提交：保留当时选项，解析/题干取当前篇章最新内容 */
+	public SubmitResult getSubmission(Long userId, Long submissionId) {
+		SimSubmission sub = submissionMapper.selectById(submissionId);
+		if (sub == null || !userId.equals(sub.getUserId())) {
+			throw new BusinessException(404, "做题记录不存在");
+		}
+		SimPassage passage = requirePassageEntity(sub.getPassageId());
+		List<SimQuestion> questions = loadQuestions(passage.getId());
+		Map<Long, SimQuestion> qMap = questions.stream()
+				.collect(Collectors.toMap(SimQuestion::getId, q -> q));
+		Map<Long, List<SimOption>> optsByQ = Map.of();
+		if (!qMap.isEmpty()) {
+			optsByQ = optionMapper.selectList(new LambdaQueryWrapper<SimOption>()
+							.in(SimOption::getQuestionId, qMap.keySet()))
+					.stream()
+					.collect(Collectors.groupingBy(SimOption::getQuestionId));
+		}
+
+		List<Map<String, Object>> stored = sub.getAnswersJson() == null ? List.of() : sub.getAnswersJson();
+		List<QuestionResult> results = new ArrayList<>();
+		for (Map<String, Object> row : stored) {
+			Long qid = toLong(row.get("questionId"));
+			if (qid == null) {
+				continue;
+			}
+			String userLabel = normalizeLabel(asString(row.get("userLabel")));
+			String storedCorrectLabel = normalizeLabel(asString(row.get("correctLabel")));
+			boolean storedOk = Boolean.TRUE.equals(row.get("correct"))
+					|| "true".equalsIgnoreCase(asString(row.get("correct")));
+
+			SimQuestion q = qMap.get(qid);
+			if (q == null) {
+				results.add(new QuestionResult(
+						qid, "（原题已更新，仅保留当时选项）", null,
+						userLabel, storedCorrectLabel, storedOk,
+						null, null, null, Map.of(), null, List.of()));
+				continue;
+			}
+			List<SimOption> opts = optsByQ.getOrDefault(qid, List.of());
+			String liveCorrect = resolveCorrectLabel(q, opts);
+			String correctLabel = liveCorrect != null ? liveCorrect : storedCorrectLabel;
+			boolean ok = userLabel != null && userLabel.equals(correctLabel);
+			results.add(new QuestionResult(
+					q.getId(), q.getStem(), q.getSkillTag(), userLabel, correctLabel, ok,
+					q.getLocateEn(), q.getLocateZh(), q.getExplainCorrect(),
+					parseDistractors(q.getExplainDistractorsJson()), q.getExplainTip(),
+					opts.stream()
+							.sorted(Comparator.comparing(SimOption::getLabel))
+							.map(o -> new OptionView(o.getQuestionId(), o.getLabel(), o.getContent()))
+							.toList()));
+		}
+
+		int elapsed = sub.getElapsedSeconds() == null ? 0 : sub.getElapsedSeconds();
+		int correct = sub.getCorrectCount() == null
+				? (int) results.stream().filter(QuestionResult::correct).count()
+				: sub.getCorrectCount();
+		int total = sub.getTotalQuestions() == null ? results.size() : sub.getTotalQuestions();
+		return new SubmitResult(
+				passage.getId(),
+				passage.getTitle(),
+				correct,
+				total,
+				elapsed,
+				passage.getRecommendedMinutes(),
+				passage.getContentEn(),
+				passage.getContentZh(),
+				parseVocab(passage.getVocabJson()),
+				results);
+	}
+
 	// —— internals ——
 
 	private SubmitResult grade(Long passageId, SubmitSimExamRequest request, Long userId, boolean requirePublished) {
@@ -400,11 +470,14 @@ public class SimExamService {
 		if (!StringUtils.hasText(req.getPassageEn()) || req.getPassageEn().trim().length() < 100) {
 			throw new BusinessException(400, "底稿正文过短");
 		}
-		try {
-			objectMapper.readTree(req.getQuestionsJson());
-		} catch (Exception e) {
-			throw new BusinessException(400, "questionsJson 须为合法 JSON");
+		String rawQuestions = StringUtils.hasText(req.getQuestionsText())
+				? req.getQuestionsText()
+				: req.getQuestionsJson();
+		if (!StringUtils.hasText(rawQuestions)) {
+			throw new BusinessException(400, "请粘贴题目文本（题干 + A/B/C/D 选项）");
 		}
+		// 解析校验：不合法会抛 BusinessException
+		SimExamQuestionsParser.normalizeToJson(rawQuestions, req.getAnswersText(), objectMapper);
 	}
 
 	private void applySource(SimSourcePaper row, AdminSimSourceRequest req) {
@@ -412,7 +485,15 @@ public class SimExamService {
 		row.setSectionType(req.getSectionType());
 		row.setTitle(req.getTitle().trim());
 		row.setPassageEn(req.getPassageEn().trim());
-		row.setQuestionsJson(req.getQuestionsJson().trim());
+		String rawQuestions = StringUtils.hasText(req.getQuestionsText())
+				? req.getQuestionsText().trim()
+				: (req.getQuestionsJson() == null ? "" : req.getQuestionsJson().trim());
+		String rawAnswers = req.getAnswersText() == null ? "" : req.getAnswersText().trim();
+		// 原文原样入库，编辑时原样回显
+		row.setQuestionsText(rawQuestions);
+		row.setAnswersText(rawAnswers);
+		// 同时解析为结构化 JSON，供 AI 仿写使用
+		row.setQuestionsJson(SimExamQuestionsParser.normalizeToJson(rawQuestions, rawAnswers, objectMapper));
 		row.setSourceMeta(req.getSourceMeta());
 		row.setLicenseNote(StringUtils.hasText(req.getLicenseNote())
 				? req.getLicenseNote().trim()
@@ -472,10 +553,16 @@ public class SimExamService {
 	}
 
 	private SourceDetail toSourceDetail(SimSourcePaper s) {
+		String questionsText = StringUtils.hasText(s.getQuestionsText())
+				? s.getQuestionsText()
+				: SimExamQuestionsParser.toPlainText(s.getQuestionsJson(), objectMapper);
+		String answersText = StringUtils.hasText(s.getAnswersText())
+				? s.getAnswersText()
+				: SimExamQuestionsParser.toAnswersText(s.getQuestionsJson(), objectMapper);
 		return new SourceDetail(
 				s.getId(), s.getExamLevel(), s.getSectionType(), s.getTitle(),
-				s.getPassageEn(), s.getQuestionsJson(), s.getSourceMeta(),
-				s.getLicenseNote(), s.getOfficialExplains(), s.getStatus());
+				s.getPassageEn(), s.getQuestionsJson(), questionsText, answersText,
+				s.getSourceMeta(), s.getLicenseNote(), s.getOfficialExplains(), s.getStatus());
 	}
 
 	private AdminPassageDetail toAdminDetail(SimPassage p, boolean withQuestions) {
@@ -530,6 +617,24 @@ public class SimExamService {
 		return t.isEmpty() ? null : t.substring(0, 1);
 	}
 
+	private static Long toLong(Object v) {
+		if (v == null) {
+			return null;
+		}
+		if (v instanceof Number n) {
+			return n.longValue();
+		}
+		try {
+			return Long.parseLong(String.valueOf(v).trim());
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	private static String asString(Object v) {
+		return v == null ? null : String.valueOf(v);
+	}
+
 	private static String truncate(String s, int max) {
 		if (s == null) {
 			return null;
@@ -542,7 +647,9 @@ public class SimExamService {
 	}
 
 	public record SourceDetail(Long id, String examLevel, String sectionType, String title,
-							   String passageEn, String questionsJson, String sourceMeta,
+							   String passageEn, String questionsJson,
+							   String questionsText, String answersText,
+							   String sourceMeta,
 							   String licenseNote, String officialExplains, String status) {
 	}
 

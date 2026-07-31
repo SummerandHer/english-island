@@ -54,4 +54,11 @@ public class SimExamController {
 			@RequestParam(defaultValue = "20") int limit) {
 		return ApiResponse.ok(simExamService.listMine(userDetails.getUser().getId(), limit));
 	}
+
+	@GetMapping("/submissions/{id}")
+	public ApiResponse<SimExamService.SubmitResult> submissionDetail(
+			@PathVariable Long id,
+			@AuthenticationPrincipal IslandUserDetails userDetails) {
+		return ApiResponse.ok(simExamService.getSubmission(userDetails.getUser().getId(), id));
+	}
 }

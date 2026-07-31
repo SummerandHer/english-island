@@ -4,7 +4,7 @@
       :to="backTo"
       class="mb-4 inline-block text-sm text-[var(--island-primary)]"
     >
-      &larr; {{ isLong ? '长篇列表' : '短篇列表' }}
+      &larr; {{ reviewingHistory ? '仿真题岛' : isLong ? '长篇列表' : '短篇列表' }}
     </NuxtLink>
 
     <div v-if="loading" class="island-card p-6 text-sm text-gray-500">加载中…</div>
@@ -23,6 +23,9 @@
             {{ passage.questions.length }} 题
             <span v-if="passage.recommendedMinutes"> · 推荐 {{ passage.recommendedMinutes }} 分钟</span>
           </p>
+          <p v-if="reviewingHistory" class="mt-1 text-xs text-amber-700">
+            正在回看历史提交（含当时所选选项）
+          </p>
         </div>
         <div v-if="!result" class="rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-800">
           用时 {{ formatElapsed(elapsed) }}
@@ -32,7 +35,7 @@
         </div>
       </header>
 
-      <p class="mb-4 text-xs text-gray-400">
+      <p v-if="!result" class="mb-4 text-xs text-gray-400">
         考试模式：提交前不可点词、不提供全文翻译。本站为仿真题，非历年原题。
         <span v-if="isLong"> 点击段落标号作答；同一段落可对应多题。</span>
       </p>
@@ -184,6 +187,7 @@
               </span>
             </span>
           </p>
+          <p v-if="reviewingHistory" class="mt-2 text-xs text-gray-400">历史记录回看</p>
         </section>
 
         <section class="island-card p-4">
@@ -304,6 +308,12 @@ const auth = useAuthStore()
 const message = useAppMessage()
 
 const passageId = computed(() => Number(route.params.id))
+const submissionId = computed(() => {
+  const raw = route.query.submission
+  const n = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isFinite(n) && n > 0 ? n : 0
+})
+const reviewingHistory = computed(() => submissionId.value > 0)
 const passage = ref<SimPracticeDetail | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
@@ -320,7 +330,13 @@ const isLong = computed(
     passage.value?.sectionType === 'long_match' ||
     result.value?.contentEn?.includes('[A]') === true
 )
-const backTo = computed(() => (isLong.value ? '/islands/exam/long' : '/islands/exam/short'))
+const backTo = computed(() =>
+  reviewingHistory.value
+    ? '/islands/exam'
+    : isLong.value
+      ? '/islands/exam/long'
+      : '/islands/exam/short'
+)
 
 const paragraphs = computed(() => {
   if (passage.value?.paragraphs?.length) return passage.value.paragraphs
@@ -357,6 +373,13 @@ onMounted(() => {
   load()
 })
 
+watch(
+  () => [passageId.value, submissionId.value] as const,
+  () => {
+    load()
+  }
+)
+
 onUnmounted(() => stopTimer())
 
 function parseParagraphs(content: string) {
@@ -381,7 +404,29 @@ async function load() {
   result.value = null
   answers.value = {}
   activeIdx.value = 0
+  stopTimer()
   try {
+    if (submissionId.value > 0) {
+      auth.hydrate()
+      if (!auth.isLoggedIn) {
+        errorMessage.value = '请先登录后查看做题记录'
+        passage.value = null
+        return
+      }
+      const review = await request<SimSubmitResult>(
+        `/api/v1/sim-exam/submissions/${submissionId.value}`
+      )
+      if (review.passageId !== passageId.value) {
+        errorMessage.value = '记录与篇章不匹配'
+        passage.value = null
+        return
+      }
+      result.value = review
+      passage.value = await request<SimPracticeDetail>(
+        `/api/v1/sim-exam/passages/${passageId.value}`
+      )
+      return
+    }
     passage.value = await request<SimPracticeDetail>(`/api/v1/sim-exam/passages/${passageId.value}`)
     startTimer()
   } catch (e: unknown) {
@@ -479,6 +524,10 @@ function resetPractice() {
   result.value = null
   answers.value = {}
   activeIdx.value = 0
+  if (submissionId.value > 0) {
+    navigateTo(`/islands/exam/practice/${passageId.value}`)
+    return
+  }
   startTimer()
 }
 </script>

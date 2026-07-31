@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,10 +20,24 @@ public class VideoController {
 	@GetMapping
 	public ApiResponse<PageResult<VideoService.VideoSummary>> list(
 			@RequestParam(defaultValue = "1") int page,
-			@RequestParam(defaultValue = "7") int size,
+			@RequestParam(defaultValue = "12") int size,
+			@RequestParam(required = false) String tag,
+			@RequestParam(defaultValue = "all") String filter,
 			@AuthenticationPrincipal IslandUserDetails userDetails) {
 		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
-		return ApiResponse.ok(videoService.listVideos(page, size, userId));
+		return ApiResponse.ok(videoService.listVideos(page, size, userId, tag, filter));
+	}
+
+	@GetMapping("/overview")
+	public ApiResponse<VideoService.VideoOverview> overview(
+			@AuthenticationPrincipal IslandUserDetails userDetails) {
+		Long userId = userDetails != null ? userDetails.getUser().getId() : null;
+		return ApiResponse.ok(videoService.overview(userId));
+	}
+
+	@GetMapping("/tags")
+	public ApiResponse<List<VideoService.TagDto>> tags() {
+		return ApiResponse.ok(videoService.listActiveTags());
 	}
 
 	@GetMapping("/{id}")
@@ -39,4 +54,17 @@ public class VideoController {
 		videoService.toggleFavorite(userDetails.getUser().getId(), id);
 		return ApiResponse.ok(Map.of("ok", true));
 	}
+
+	@PostMapping("/{id}/progress")
+	public ApiResponse<Map<String, Boolean>> progress(
+			@PathVariable Long id,
+			@RequestBody(required = false) ProgressRequest body,
+			@AuthenticationPrincipal IslandUserDetails userDetails) {
+		Integer seq = body != null ? body.lastSentenceSeq() : null;
+		Integer pos = body != null ? body.lastPositionMs() : null;
+		videoService.touchProgress(userDetails.getUser().getId(), id, seq, pos);
+		return ApiResponse.ok(Map.of("ok", true));
+	}
+
+	public record ProgressRequest(Integer lastSentenceSeq, Integer lastPositionMs) {}
 }

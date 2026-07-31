@@ -29,8 +29,17 @@ public class SimSourcePaper {
 	@TableField("passage_en")
 	private String passageEn;
 
+	/** 结构化题目（供 AI 生成），由粘贴文本解析得到 */
 	@TableField("questions_json")
 	private String questionsJson;
+
+	/** 管理员粘贴的题目原文，原样回显 */
+	@TableField("questions_text")
+	private String questionsText;
+
+	/** 管理员填写的答案原文，原样回显 */
+	@TableField("answers_text")
+	private String answersText;
 
 	@TableField("source_meta")
 	private String sourceMeta;

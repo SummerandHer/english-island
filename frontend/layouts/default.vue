@@ -1,14 +1,41 @@
 <template>
-  <div class="app-shell">
-    <div v-if="sidebarOpen" class="backdrop lg:hidden" @click="sidebarOpen = false" />
-    <LayoutAppSidebar :open="sidebarOpen" @navigate="sidebarOpen = false" />
-    <div class="app-main">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell--reader': hideChromeSidebar && route.path !== '/video',
+      'app-shell--video': route.path === '/video'
+    }"
+  >
+    <div
+      v-if="!hideChromeSidebar && sidebarOpen"
+      class="backdrop lg:hidden"
+      @click="sidebarOpen = false"
+    />
+    <LayoutAppSidebar
+      v-if="!hideChromeSidebar"
+      :open="sidebarOpen"
+      @navigate="sidebarOpen = false"
+    />
+    <div class="app-main" :class="{ 'app-main--full': hideChromeSidebar }">
       <header class="topbar">
-        <button class="menu lg:hidden" type="button" aria-label="打开菜单" @click="sidebarOpen = true">
+        <button
+          v-if="!hideChromeSidebar"
+          class="menu lg:hidden"
+          type="button"
+          aria-label="打开菜单"
+          @click="sidebarOpen = true"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round" />
           </svg>
         </button>
+        <NuxtLink
+          v-if="hideChromeSidebar"
+          to="/"
+          class="home-link"
+        >
+          ← 首页
+        </NuxtLink>
         <div class="grow" />
         <label class="search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -34,7 +61,7 @@
           <button class="cta" type="button" @click="navigateTo('/register')">注册</button>
         </template>
       </header>
-      <main class="content">
+      <main class="content" :class="{ 'content--reader': hideChromeSidebar }">
         <slot />
       </main>
     </div>
@@ -43,8 +70,25 @@
 
 <script setup lang="ts">
 const auth = useAuthStore()
+const route = useRoute()
 const sidebarOpen = ref(false)
+
+/** 日报正文 / 仿真题练习 / 双语列表：隐藏全局侧栏，给模块自有侧栏腾出宽度 */
+const hideChromeSidebar = computed(() =>
+  /^\/daily\/[^/]+$/.test(route.path)
+  || /^\/islands\/exam\/practice\/[^/]+$/.test(route.path)
+  || route.path === '/video'
+)
+
 onMounted(() => auth.hydrate())
+
+watch(
+  () => route.path,
+  () => {
+    sidebarOpen.value = false
+  }
+)
+
 function logout() {
   auth.logout()
   navigateTo('/login')
@@ -55,6 +99,41 @@ function logout() {
 .app-shell {
   min-height: 100vh;
   background: var(--island-bg);
+}
+
+.app-shell--reader {
+  background: #f4f5f2;
+}
+
+.app-shell--video {
+  background:
+    radial-gradient(ellipse 90% 42% at 50% -8%, rgba(209, 224, 201, 0.42), transparent 58%),
+    linear-gradient(180deg, #f5f7f3 0%, #fafbf9 32%, #ffffff 72%);
+}
+
+.app-shell--video .content {
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+}
+
+@media (min-width: 768px) {
+  .app-shell--video .content {
+    padding-left: 1.6rem;
+    padding-right: 1.6rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell--video .content {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+.app-shell--video .home-link {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .backdrop {
@@ -70,6 +149,7 @@ function logout() {
 
 @media (min-width: 1024px) {
   .app-main { padding-left: var(--island-sidebar-w); }
+  .app-main--full { padding-left: 0; }
 }
 
 .topbar {
@@ -111,6 +191,16 @@ function logout() {
 }
 
 .grow { flex: 1; }
+
+.home-link {
+  color: var(--island-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.home-link:hover {
+  color: var(--island-text);
+}
 
 .search {
   display: none;
@@ -167,11 +257,16 @@ function logout() {
   padding: 0 1rem 1.5rem;
 }
 
+.content--reader {
+  padding-bottom: 2rem;
+}
+
 @media (min-width: 768px) {
   .content { padding: 0 1.4rem 2rem; }
 }
 
 @media (min-width: 1024px) {
   .content { padding: 0 1.6rem 2rem 1.4rem; }
+  .content--reader { padding: 0 1.75rem 2.5rem; }
 }
 </style>

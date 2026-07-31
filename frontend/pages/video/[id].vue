@@ -13,9 +13,8 @@
     </template>
   </div>
 
-  <div v-else-if="video" class="video-detail">
+  <div v-else-if="video" class="video-detail" :class="{ 'video-detail--hide-player': videoHidden }">
     <div class="video-detail__body">
-      <!-- 左侧 -->
       <section class="video-detail__main">
         <VideoStudyHeader
           :title="video.title"
@@ -23,11 +22,15 @@
           @favorite="onFavorite"
         />
 
-        <div ref="playerWrap" class="video-detail__player">
+        <div v-if="isEmbed && studyMode !== 'intensive'" class="embed-tip">
+          当前为 B 站 Embed，句级重听/挖空体验有限；后续将全部改为自托管视频以获得完整体验。
+        </div>
+
+        <div v-show="!videoHidden" ref="playerWrap" class="video-detail__player">
           <iframe
             v-if="video.embedBvid"
             :src="embedUrl"
-            class="h-full w-full"
+            class="video-detail__media"
             allowfullscreen
             frameborder="0"
           />
@@ -35,27 +38,32 @@
             v-else-if="videoSrc"
             ref="videoEl"
             :src="videoSrc"
-            class="h-full w-full object-contain"
+            class="video-detail__media"
             playsinline
             @timeupdate="onTimeUpdate"
             @play="isPlaying = true"
             @pause="isPlaying = false"
+            @ended="isPlaying = false"
           />
-          <div v-else class="flex h-full items-center justify-center text-sm text-gray-400">
+          <div v-else class="video-detail__empty">
             暂无可用播放源
           </div>
         </div>
 
-        <VideoControls
-          v-model:auto-follow="autoFollow"
-          v-model:single-pause="singlePause"
+        <VideoPlayerToolbar
           :playback-rate="playbackRate"
           :playing="isPlaying"
+          :video-hidden="videoHidden"
+          :sentence-loop="sentenceLoop"
+          :single-pause="singlePause"
           @prev="onPrev"
           @next="onNext"
           @toggle-play="onTogglePlay"
           @fullscreen="onFullscreen"
           @rate="onRate"
+          @update:video-hidden="videoHidden = $event"
+          @update:sentence-loop="sentenceLoop = $event"
+          @update:single-pause="singlePause = $event"
         />
 
         <VideoCurrentSentence
@@ -63,17 +71,32 @@
           :index="currentIndex"
           :total="video.sentences.length"
           :mode="subtitleMode"
+          :study-mode="studyMode"
+          :revealed="currentBlindRevealed"
+          :tokens="currentClozeTokens"
+          :answers="clozeAnswers"
+          :results="clozeResults"
+          @reveal="revealCurrentBlind"
+          @blank-input="onBlankInput"
         />
       </section>
 
-      <!-- 右侧：语言 Tab + 句列表 -->
       <aside class="video-detail__aside">
         <VideoSentenceList
           v-model:mode="subtitleMode"
+          v-model:study-mode="studyMode"
+          v-model:cloze-density="clozeDensity"
           :sentences="video.sentences"
           :current-index="currentIndex"
+          :get-tokens="getClozeTokens"
+          :answers="clozeAnswers"
+          :results="clozeResults"
+          :revealed="blindRevealed"
           @select="onSelectSentence"
           @repeat="onRepeatSentence"
+          @reshuffle="reshuffleCloze()"
+          @blank-input="onBlankInput"
+          @reveal="revealBlindById"
         />
       </aside>
     </div>
@@ -81,8 +104,8 @@
 </template>
 
 <script setup lang="ts">
-import type { VideoDetail } from '~/types/api'
-import type { SubtitleMode } from '~/types/api'
+import type { ClozeDensity, StudyMode, SubtitleMode, VideoDetail } from '~/types/api'
+import VideoPlayerToolbar from '~/components/video/VideoPlayerToolbar.vue'
 
 definePageMeta({ layout: 'video' })
 
@@ -99,15 +122,31 @@ const playbackRate = ref(1)
 const isPlaying = ref(false)
 const autoFollow = ref(true)
 const singlePause = ref(false)
+const videoHidden = ref(false)
+const sentenceLoop = ref(false)
 const subtitleMode = ref<SubtitleMode>('bilingual')
+const studyMode = ref<StudyMode>('intensive')
+const clozeDensity = ref<ClozeDensity>('one')
+const clozeSeed = ref(0)
+const blindRevealed = ref<Record<number, boolean>>({})
+
 let timer: ReturnType<typeof setInterval> | null = null
 let simulatedMs = 0
 let lastSentenceIndex = -1
+let loopingHold = false
 
 const sentencesRef = computed(() => video.value?.sentences ?? [])
 const sync = useVideoSync(sentencesRef)
 const { currentIndex, currentSentence, syncByTime, goPrev, goNext, selectIndex } = sync
 
+const cloze = useCloze(sentencesRef, clozeDensity, clozeSeed)
+const clozeAnswers = cloze.answers
+const clozeResults = cloze.results
+const getClozeTokens = cloze.getTokens
+const reshuffleCloze = cloze.reshuffle
+const setClozeAnswer = cloze.setAnswer
+
+const isEmbed = computed(() => !!video.value?.embedBvid)
 const useNativePlayer = computed(() => !video.value?.embedBvid && !!video.value?.playUrl)
 
 const videoSrc = computed(() => {
@@ -121,6 +160,25 @@ const embedUrl = computed(() =>
     ? `https://player.bilibili.com/player.html?bvid=${video.value.embedBvid}&page=1&high_quality=1&danmaku=0`
     : ''
 )
+
+const currentBlindRevealed = computed(() => {
+  const s = currentSentence.value
+  if (!s) return false
+  return !!blindRevealed.value[s.id]
+})
+
+const currentClozeTokens = computed(() => {
+  const s = currentSentence.value
+  if (!s) return []
+  return getClozeTokens(s.id)
+})
+
+watch(studyMode, (m) => {
+  if (m === 'blind') {
+    blindRevealed.value = {}
+    singlePause.value = true
+  }
+})
 
 onMounted(async () => {
   auth.hydrate()
@@ -152,7 +210,7 @@ function startSimulatedSync() {
     const last = video.value.sentences[video.value.sentences.length - 1]
     if (simulatedMs > last.endMs + 2000) simulatedMs = 0
     syncByTime(simulatedMs)
-    checkSinglePause(simulatedMs)
+    handleBoundary(simulatedMs)
   }, 500)
 }
 
@@ -169,22 +227,35 @@ function onTimeUpdate() {
   if (autoFollow.value) {
     syncByTime(ms)
   }
-  checkSinglePause(ms)
+  handleBoundary(ms)
 }
 
-function checkSinglePause(ms: number) {
-  if (!singlePause.value || !video.value?.sentences.length) return
+function handleBoundary(ms: number) {
+  if (!video.value?.sentences.length) return
   const idx = currentIndex.value
   const sentence = video.value.sentences[idx]
   if (!sentence) return
-  if (idx !== lastSentenceIndex) {
-    lastSentenceIndex = idx
+
+  if (sentenceLoop.value && ms >= sentence.endMs - 80) {
+    if (loopingHold) return
+    loopingHold = true
+    seekTo(sentence.startMs, true)
+    window.setTimeout(() => {
+      loopingHold = false
+    }, 200)
     return
   }
-  if (ms >= sentence.endMs - 80) {
-    if (useNativePlayer.value && videoEl.value && !videoEl.value.paused) {
-      videoEl.value.pause()
-    }
+
+  if (idx !== lastSentenceIndex) {
+    lastSentenceIndex = idx
+    loopingHold = false
+    return
+  }
+
+  if (ms < sentence.endMs - 80) return
+
+  if (singlePause.value && useNativePlayer.value && videoEl.value && !videoEl.value.paused) {
+    videoEl.value.pause()
   }
 }
 
@@ -204,8 +275,21 @@ function onPrev() { seekTo(goPrev()) }
 function onNext() { seekTo(goNext()) }
 function onSelectSentence(index: number) { seekTo(selectIndex(index), true) }
 function onRepeatSentence(index: number) {
-  const ms = selectIndex(index)
-  seekTo(ms, true)
+  seekTo(selectIndex(index), true)
+}
+
+function revealCurrentBlind() {
+  const s = currentSentence.value
+  if (!s) return
+  revealBlindById(s.id)
+}
+
+function revealBlindById(sentenceId: number) {
+  blindRevealed.value = { ...blindRevealed.value, [sentenceId]: true }
+}
+
+function onBlankInput(blankId: string, value: string) {
+  setClozeAnswer(blankId, value)
 }
 
 function onTogglePlay() {
@@ -215,7 +299,9 @@ function onTogglePlay() {
     } else {
       videoEl.value.pause()
     }
+    return
   }
+  isPlaying.value = !isPlaying.value
 }
 
 function onRate(rate: number) {
@@ -252,43 +338,114 @@ async function onFavorite() {
 
 <style scoped>
 .video-detail__body {
-  @apply grid grid-cols-1 gap-3;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
 }
 
 .video-detail__main {
-  @apply flex flex-col gap-2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
+/* 固定 16:9，contain 保证不变形；余白用柔和底色而不是死黑 */
 .video-detail__player {
-  @apply aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #2a3530, #1c2420);
+  box-shadow: 0 8px 28px rgba(31, 42, 36, 0.08);
+}
+
+.video-detail__media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+
+.video-detail__empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .video-detail__aside {
-  @apply min-h-[280px];
+  display: flex;
+  min-height: 320px;
+  flex-direction: column;
+}
+
+.embed-tip {
+  border-radius: 10px;
+  border: 1px solid rgba(180, 140, 60, 0.2);
+  background: #fbf7ee;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.75rem;
+  color: #8a6b2e;
+}
+
+.video-detail--hide-player .video-detail__player {
+  display: none;
 }
 
 @media (min-width: 768px) {
   .video-detail {
-    @apply h-full overflow-hidden;
+    height: 100%;
+    overflow: hidden;
   }
 
   .video-detail__body {
-    @apply h-full gap-4 overflow-hidden;
-    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+    height: 100%;
+    gap: 1rem;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
   }
 
   .video-detail__main {
-    @apply grid h-full min-h-0 gap-2 overflow-hidden;
-    grid-template-rows: auto minmax(0, 1fr) auto minmax(96px, 22%);
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.65rem;
+    overflow: hidden;
   }
 
   .video-detail__player {
-    aspect-ratio: unset;
-    @apply min-h-0 rounded-xl;
+    flex: 0 0 auto;
+    width: min(100%, calc(34vh * 16 / 9), 640px);
+    margin-inline: auto;
+  }
+
+  .video-detail__main > :last-child {
+    flex: 1 1 auto;
+    min-height: 110px;
+    overflow: auto;
   }
 
   .video-detail__aside {
-    @apply flex min-h-0 flex-col overflow-hidden;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+@media (min-width: 1100px) {
+  .video-detail__body {
+    grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  }
+
+  .video-detail__player {
+    width: min(100%, calc(38vh * 16 / 9), 720px);
   }
 }
 </style>

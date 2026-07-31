@@ -78,66 +78,23 @@
       </section>
     </div>
 
-    <div class="row-mid">
-      <!-- 推荐内容 -->
-      <section class="island-card card rec">
-        <div class="card-hd">
-          <h2>推荐内容</h2>
+    <section class="island-card card stats">
+      <div class="card-hd">
+        <h2>学习数据</h2>
+        <span class="muted">本周 8.6h</span>
+      </div>
+      <div class="chart">
+        <div v-for="d in week" :key="d.day" class="col">
+          <div class="col-bar"><span :style="{ height: (d.h / maxH) * 100 + '%' }" /></div>
+          <em>{{ d.day }}</em>
         </div>
-        <div class="tabs">
-          <button v-for="tab in tabs" :key="tab" type="button" class="tab" :class="{ on: activeTab === tab }" @click="activeTab = tab">{{ tab }}</button>
-        </div>
-        <ul class="rec-list">
-          <li v-for="item in filteredRecs" :key="item.id" class="rec-item">
-            <img class="thumb" :src="item.thumb" alt="" />
-            <div>
-              <p class="rec-title">{{ item.title }}</p>
-              <p class="rec-meta">{{ item.meta }}</p>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <!-- 学习数据 -->
-      <section class="island-card card stats">
-        <div class="card-hd">
-          <h2>学习数据</h2>
-          <span class="muted">本周 8.6h</span>
-        </div>
-        <div class="chart">
-          <div v-for="d in week" :key="d.day" class="col">
-            <div class="col-bar"><span :style="{ height: (d.h / maxH) * 100 + '%' }" /></div>
-            <em>{{ d.day }}</em>
-          </div>
-        </div>
-        <div class="stat-grid">
-          <div><b>5</b><span>学习天数</span></div>
-          <div><b>235</b><span>累计词汇</span></div>
-          <div><b>3</b><span>完成套题</span></div>
-        </div>
-      </section>
-
-      <!-- 岛屿成就 -->
-      <section class="island-card card ach">
-        <div class="card-hd">
-          <h2>岛屿成就</h2>
-          <a class="island-link" href="#" @click.prevent>查看全部 &gt;</a>
-        </div>
-        <div class="ach-main">
-          <img class="badge" src="/home/badge-lv.png" width="88" height="88" alt="Lv.12" />
-          <div class="ach-exp">
-            <div class="exp-row"><span class="exp-tag">EXP</span><span class="muted">320 / 500</span></div>
-            <div class="bar"><i style="width: 64%" /></div>
-          </div>
-        </div>
-        <div class="badges">
-          <div v-for="b in badges" :key="b" class="mini" :class="{ lock: b.lock }">
-            <span>{{ b.icon }}</span>
-            <em>{{ b.label }}</em>
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+      <div class="stat-grid">
+        <div><b>5</b><span>学习天数</span></div>
+        <div><b>235</b><span>累计词汇</span></div>
+        <div><b>3</b><span>完成套题</span></div>
+      </div>
+    </section>
 
     <div class="row-bot">
       <section class="island-card card tools">
@@ -215,30 +172,11 @@ function shuffleWord() {
   wordIndex.value = (wordIndex.value + 1) % wordBank.length
 }
 
-const tabs = ['精选', '听力', '阅读', '写作', '真题']
-const activeTab = ref('精选')
-const recommendations = [
-  { id: 1, tab: '精选', title: '四六级高频词汇记忆技巧', meta: '12 分钟 · 2.3k 人学习', thumb: '/home/rec-thumb-1.png' },
-  { id: 2, tab: '听力', title: '长对话信息抓取训练', meta: '18 分钟 · 1.1k 人学习', thumb: '/home/rec-thumb-2.png' },
-  { id: 3, tab: '阅读', title: '段落主旨快速定位法', meta: '15 分钟 · 980 人学习', thumb: '/home/rec-thumb-3.png' },
-  { id: 4, tab: '精选', title: '双语精听入门指南', meta: '8 分钟 · 3.1k 人学习', thumb: '/home/rec-thumb-1.png' }
-]
-const filteredRecs = computed(() =>
-  recommendations.filter((r) => activeTab.value === '精选' || r.tab === activeTab.value).slice(0, 3)
-)
-
 const week = [
   { day: '一', h: 1.2 }, { day: '二', h: 2.0 }, { day: '三', h: 0.8 },
   { day: '四', h: 2.5 }, { day: '五', h: 1.6 }, { day: '六', h: 3.0 }, { day: '日', h: 1.0 }
 ]
 const maxH = Math.max(...week.map((d) => d.h))
-
-const badges = [
-  { label: '连续7天', icon: '7', lock: false },
-  { label: '词汇500', icon: '词', lock: false },
-  { label: '听力达人', icon: '听', lock: false },
-  { label: '满勤月', icon: '月', lock: true }
-]
 
 const tools = [
   { label: '生词本', to: '/vocabulary?tab=notebook', icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v16H7.5A2.5 2.5 0 0 0 5 20.5V4.5Z"/><path d="M9 7h6M9 11h4"/></svg>` },
@@ -335,16 +273,14 @@ onMounted(() => auth.hydrate())
   font-size: 0.78rem;
 }
 
-.row3,
-.row-mid {
+.row3 {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr;
 }
 
 @media (min-width: 900px) {
-  .row3,
-  .row-mid {
+  .row3 {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -569,60 +505,6 @@ onMounted(() => auth.hydrate())
   object-fit: contain;
 }
 
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.85rem;
-}
-
-.tab {
-  border: none;
-  border-radius: 999px;
-  background: var(--island-surface);
-  color: var(--island-muted);
-  font-size: 0.75rem;
-  padding: 0.28rem 0.7rem;
-  cursor: pointer;
-}
-
-.tab.on {
-  background: var(--island-sage);
-  color: var(--island-forest);
-  font-weight: 600;
-}
-
-.rec-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.rec-item {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.thumb {
-  width: 4.2rem;
-  height: 2.8rem;
-  flex-shrink: 0;
-  border-radius: 12px;
-  object-fit: cover;
-}
-
-.rec-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
-.rec-meta {
-  margin-top: 0.2rem;
-  font-size: 0.72rem;
-  color: var(--island-muted);
-}
-
 .chart {
   display: flex;
   align-items: flex-end;
@@ -680,67 +562,6 @@ onMounted(() => auth.hydrate())
   font-size: 0.7rem;
   color: var(--island-muted);
 }
-
-.ach-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.badge {
-  object-fit: contain;
-}
-
-.ach-exp { width: 100%; }
-
-.exp-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.35rem;
-}
-
-.exp-tag {
-  border-radius: 999px;
-  background: var(--island-sage-soft);
-  color: var(--island-primary);
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.12rem 0.45rem;
-}
-
-.badges {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.4rem;
-  margin-top: 1rem;
-}
-
-.mini {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.65rem;
-  color: var(--island-muted);
-  text-align: center;
-}
-
-.mini span {
-  display: flex;
-  width: 2.2rem;
-  height: 2.2rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--island-sage-soft);
-  color: var(--island-primary);
-  font-weight: 700;
-}
-
-.mini.lock { opacity: 0.4; }
-.mini.lock span { background: #e6ebe4; color: #9aa69c; }
 
 .row-bot {
   display: grid;

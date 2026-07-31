@@ -5,8 +5,12 @@
       <div class="mb-2 flex items-center gap-2">
         <span class="text-xl font-bold">{{ detail.summary.word }}</span>
         <NButton quaternary size="small" @click="speakWord(detail.summary.word)">🔊</NButton>
-        <NTag size="small">{{ detail.summary.examLevel?.toUpperCase() }}</NTag>
+        <NTag v-if="detail.summary.examLevel" size="small">{{ detail.summary.examLevel?.toUpperCase() }}</NTag>
+        <NTag v-if="detail.lookupSource === 'dict'" size="small" type="info">词典</NTag>
       </div>
+      <p v-if="detail.matchedWord && detail.queryWord && detail.matchedWord !== detail.queryWord" class="mb-1 text-xs text-gray-400">
+        由「{{ detail.queryWord }}」还原为 {{ detail.matchedWord }}
+      </p>
       <p v-if="detail.summary.phonetic" class="mb-2 text-sm text-gray-500">{{ detail.summary.phonetic }}</p>
       <p class="text-gray-800">{{ detail.meaningZh }}</p>
       <p v-if="detail.exampleEn" class="mt-3 text-sm text-gray-600">{{ detail.exampleEn }}</p>
@@ -90,7 +94,8 @@ async function addToNotebook() {
     await request('/api/v1/vocabulary/notebook', {
       method: 'POST',
       body: {
-        vocabularyId: detail.value.summary.id,
+        vocabularyId: detail.value.summary.id > 0 ? detail.value.summary.id : undefined,
+        word: props.word || detail.value.matchedWord || detail.value.summary.word,
         sourceType: props.sourceType || (props.passageId ? 'reading' : 'manual'),
         sourceId: props.passageId,
         note: props.passageTitle ? `来自《${props.passageTitle}》` : undefined

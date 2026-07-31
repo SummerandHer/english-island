@@ -32,6 +32,9 @@ public class PublishVideoRequest {
 
 	private Integer sortOrder = 0;
 
+	/** 主题标签 ID 列表（可多选） */
+	private List<Integer> tagIds;
+
 	@NotNull(message = "发布状态不能为空")
 	private Integer status = 1;
 
